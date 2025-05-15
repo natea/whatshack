@@ -1,0 +1,5 @@
+Please choose a service bundle by replying with the number:
+
+{bundle_list}
+
+Reply with the number of your choice (e.g., 1 for the first option).

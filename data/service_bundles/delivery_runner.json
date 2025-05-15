@@ -1,0 +1,41 @@
+{
+  "bundle_id": "delivery_runner",
+  "bundle_name_en": "Delivery Runner",
+  "bundle_name_xh": "Umgquzuli woKuhambisa",
+  "bundle_name_af": "Aflewering Hardloper",
+  "description_en": "Tools for local delivery runners.",
+  "description_xh": "Izixhobo zabagquzuli bokuhambisa bendawo.",
+  "description_af": "Gereedskap vir plaaslike afleweringshardlopers.",
+  "features": [
+    {
+      "feature_id": "route_optimization",
+      "name_en": "Route Optimization",
+      "name_xh": "Ukuphucuka Kwendlela",
+      "name_af": "Roete Optimalisering",
+      "description_en": "Find the most efficient routes for your deliveries."
+    },
+    {
+      "feature_id": "delivery_tracking",
+      "name_en": "Delivery Tracking",
+      "name_xh": "Ukulandela Ukuhambisa",
+      "name_af": "Aflewering Opsporing",
+      "description_en": "Track the status of all your deliveries in real-time."
+    },
+    {
+      "feature_id": "customer_notifications",
+      "name_en": "Customer Notifications",
+      "name_xh": "Izaziso Zabathengi",
+      "name_af": "Kliënte Kennisgewings",
+      "description_en": "Automatically notify customers about their delivery status."
+    },
+    {
+      "feature_id": "earnings_calculator",
+      "name_en": "Earnings Calculator",
+      "name_xh": "Isibali Semivuzo",
+      "name_af": "Verdienste Sakrekenaar",
+      "description_en": "Track your earnings and expenses for each delivery run."
+    }
+  ],
+  "price_tier": "standard",
+  "active": true
+}

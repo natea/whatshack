@@ -1,0 +1,5 @@
+Kies asseblief 'n diensbondel deur met die nommer te antwoord:
+
+{bundle_list}
+
+Antwoord met die nommer van jou keuse (bv., 1 vir die eerste opsie).

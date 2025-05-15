@@ -1,0 +1,34 @@
+{
+  "bundle_id": "street_vendor_crm",
+  "bundle_name_en": "Street-Vendor CRM",
+  "bundle_name_xh": "Isixhobo soThengiso",
+  "bundle_name_af": "Straatverkoper CRM",
+  "description_en": "Tools for street vendors.",
+  "description_xh": "Izixhobo zabathengisi basesitratweni.",
+  "description_af": "Gereedskap vir straatverkopers.",
+  "features": [
+    {
+      "feature_id": "customer_tracking",
+      "name_en": "Customer Tracking",
+      "name_xh": "Ukulandela Abathengi",
+      "name_af": "Kliënte Opsporing",
+      "description_en": "Keep track of your regular customers and their preferences."
+    },
+    {
+      "feature_id": "inventory_management",
+      "name_en": "Inventory Management",
+      "name_xh": "Ulawulo Lwempahla",
+      "name_af": "Voorraadbestuur",
+      "description_en": "Track your stock levels and get alerts when items are running low."
+    },
+    {
+      "feature_id": "sales_reporting",
+      "name_en": "Sales Reporting",
+      "name_xh": "Ingxelo Yokuthengisa",
+      "name_af": "Verkoopsverslaggewing",
+      "description_en": "View daily, weekly, and monthly sales reports."
+    }
+  ],
+  "price_tier": "free",
+  "active": true
+}

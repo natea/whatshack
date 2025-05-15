@@ -1,0 +1,41 @@
+{
+  "bundle_id": "small_business",
+  "bundle_name_en": "Small Business Suite",
+  "bundle_name_xh": "Iseti yoShishino oluNcinci",
+  "bundle_name_af": "Klein Besigheid Suite",
+  "description_en": "Complete tools for small businesses.",
+  "description_xh": "Izixhobo ezipheleleyo zamashishini amancinci.",
+  "description_af": "Volledige gereedskap vir klein besighede.",
+  "features": [
+    {
+      "feature_id": "customer_management",
+      "name_en": "Customer Management",
+      "name_xh": "Ulawulo Lwabathengi",
+      "name_af": "Kliëntbestuur",
+      "description_en": "Manage your customer database with contact details and purchase history."
+    },
+    {
+      "feature_id": "inventory_control",
+      "name_en": "Inventory Control",
+      "name_xh": "Ulawulo Lwempahla",
+      "name_af": "Voorraadbestuur",
+      "description_en": "Advanced inventory management with barcode scanning and automatic reordering."
+    },
+    {
+      "feature_id": "financial_reporting",
+      "name_en": "Financial Reporting",
+      "name_xh": "Ingxelo Yezemali",
+      "name_af": "Finansiële Verslaggewing",
+      "description_en": "Comprehensive financial reports including profit and loss statements."
+    },
+    {
+      "feature_id": "employee_management",
+      "name_en": "Employee Management",
+      "name_xh": "Ulawulo Lwabasebenzi",
+      "name_af": "Werknemerbestuur",
+      "description_en": "Track employee hours, schedules, and performance."
+    }
+  ],
+  "price_tier": "premium",
+  "active": true
+}

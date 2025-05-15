@@ -1,0 +1,11 @@
+Welcome to Township Connect! I'm your WhatsApp assistant for business tools, services, and skills development.
+
+To get started, please choose a service bundle by replying with the number:
+1. Street-Vendor CRM
+2. Small Shop Management
+3. Service Provider Tools
+
+You can change your language anytime by sending:
+/lang en (English)
+/lang xh (isiXhosa)
+/lang af (Afrikaans)
