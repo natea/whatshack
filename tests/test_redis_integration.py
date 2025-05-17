@@ -91,7 +91,7 @@ def test_redis_stream_end_to_end():
     with tempfile.NamedTemporaryFile(mode='w+') as temp_file:
         # Run the script and capture output
         result = subprocess.run(
-            ['python', 'scripts/check_redis_stream.py', '--count', '10'],
+            ['python', 'scripts/check_redis_stream.py', '--count', '50'],
             capture_output=True,
             text=True
         )

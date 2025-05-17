@@ -1,0 +1,54 @@
+# HLT-TC-006: Payment Link Generation (MoMo)
+
+**Version:** 1.0
+**Date:** May 17, 2025
+**Author:** AI Assistant (Gemini)
+
+## 1. Test Overview
+This High-Level Test (HLT) verifies that an SME user can successfully generate an MTN Mobile Money (MoMo) payment link by sending a simple command to Township Connect.
+
+## 2. User Story / Scenario
+*   **User Story (PRD 4.2):** *As a spaza shop owner (Maria), when a customer wants to pay, I want to type "SnapScan 75" or "MoMo link 75" into Township Connect so I can quickly receive a payment link or QR code to share with my customer.*
+*   **Feature (PRD 5.2):** Payment Link Generation: Auto-generate SnapScan / MoMo payment links via simple commands.
+*   **Scenario (HLT Strategy 4.2):** A spaza shop owner needs to generate a payment link for a customer. Owner sends "MoMo link 75", system generates and returns a valid payment link. Transaction is logged.
+
+## 3. Preconditions
+*   The test user is an onboarded SME user with the appropriate service bundle that includes payment link generation.
+*   User's language is set (e.g., English).
+*   The MTN MoMo integration (via Composio or direct API) is configured and active.
+*   The system is configured to parse commands like "MoMo link [amount]" or similar.
+*   The user has a MoMo merchant ID or necessary credentials configured for MoMo payments.
+
+## 4. Test Steps
+
+| Step | User Action (via WhatsApp)        | Expected System Response (WhatsApp Message & Backend)                                                                                                                                                                                                                                                                                                                                                      | AI Verifiable Checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| :--- | :-------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | User sends: "MoMo link 75"        | **System (WhatsApp):** Responds with a message containing a valid MoMo payment link (e.g., `https://api.mtn.com/momo/pay?id=...&amount=75.00`) in English. Message might also include instructions (e.g., "Share this MoMo link with your customer: [link]").<br>**System (Backend):** Calls the MoMo API (via Composio) to generate the link for R75.00. Logs the payment link generation request, including amount and a unique transaction ID. | WhatsApp response received contains a URL. The URL is a syntactically valid MoMo payment URL structure. The amount in the URL corresponds to 75.00. A unique order/transaction ID is present in the URL or system logs. Backend logs show a successful call to the payment gateway (MoMo via Composio) with the correct amount. Supabase `transactions` table (or similar) has a new entry for this payment attempt, status 'pending' or 'link_generated', amount 75.00, type 'MoMo', associated with the user. |
+| 2    | User sends: "Momo link 120.50"    | **System (WhatsApp):** Responds with a valid MoMo payment link for R120.50.<br>**System (Backend):** Generates link for 120.50. Logs request.                                                                                                                                                                                                                                                                  | Similar to Step 1, but WhatsApp response URL contains amount 120.50. Supabase log reflects 120.50.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 3    | User sends: "Momo link five" (invalid amount format) | **System (WhatsApp):** Responds with an error message in English indicating an invalid amount format (e.g., "Sorry, 'five' is not a valid amount. Please use numbers like 75 or 120.50.").\<br>**System (Backend):** Logs the failed attempt due to invalid amount. No call to payment gateway.                                                                                                       | WhatsApp response matches the expected error message for invalid amount format. No payment link is generated. No new transaction entry in Supabase for this attempt, or an entry with 'failed' status and reason. Backend logs show parsing error for amount.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 4    | User sends: "Momo link" (missing amount) | **System (WhatsApp):** Responds with an error message in English asking for the amount (e.g., "Please specify an amount for the MoMo link, like 'MoMo link 75'.").<br>**System (Backend):** Logs the failed attempt due to missing amount. No call to payment gateway.                                                                                                                                     | WhatsApp response matches the expected error message for missing amount. No payment link generated. No new transaction entry or 'failed' status. Backend logs show parsing error for missing amount.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+## 5. Acceptance Criteria
+*   **AC-01:** The system successfully generates a valid MoMo payment link when a user provides a valid "MoMo link [amount]" command.
+    *   **AI Verifiable:** The WhatsApp response contains a URL. AI script can parse the URL to verify it matches MoMo's expected format and contains the correct merchant identifier (if known/testable) and the specified amount.
+*   **AC-02:** The generated payment link correctly reflects the amount specified by the user.
+    *   **AI Verifiable:** Amount parameter in the generated MoMo URL matches the user's input.
+*   **AC-03:** The system logs the payment link generation event, including the amount and a unique transaction/order ID, in the Supabase database.
+    *   **AI Verifiable:** Supabase query on the `transactions` table shows a new record with the correct user ID, amount, payment type ('MoMo'), a unique ID, and status (e.g., 'link_generated').
+*   **AC-04:** The system provides clear error messages in the user's language for invalid amount formats or missing amounts.
+    *   **AI Verifiable:** WhatsApp responses match predefined error messages for specific invalid inputs. No payment link is generated, and no erroneous transaction is logged in Supabase (or logged as 'failed' with a reason).
+*   **AC-05:** The interaction is data-efficient (≤5KB per interaction).
+    *   **AI Verifiable:** Network monitoring tool output (or payload size calculation) for each step shows data ≤5KB.
+*   **AC-06:** (If applicable) The system correctly uses the user's pre-configured MoMo merchant details for link generation.
+    *   **AI Verifiable:** Merchant ID or relevant parameter in the generated link matches the test user's configured MoMo details.
+
+## 6. Dependencies & Assumptions
+*   The Composio/MoMo integration is fully functional and can generate valid links.
+*   The user's MoMo merchant details are correctly configured either at a system or user level.
+*   The command parsing logic for "MoMo link [amount]" is robust.
+*   Network connectivity to the MoMo payment gateway is stable.
+
+## 7. References
+*   PRD Section: 4.2 (Business & Finance - MoMo link), 5.2 (Business & Finance Tools - Payment Link Generation).
+*   High-Level Test Strategy Report Section: 4.2 (Core Business Functionality - Payment Link).
+*   Master Acceptance Test Plan: HLT-TC-006.

@@ -19,10 +19,14 @@ from src.core_handler import publish_to_redis_stream
 @pytest.mark.unit
 def test_publish_to_redis_stream():
     """Test that the publish_to_redis_stream function works correctly."""
-    # Mock the Redis client
-    with patch('src.core_handler.redis_client') as mock_redis:
-        # Setup mock
+    # Mock the Redis client and environment variable
+    with patch('src.core_handler.redis_client') as mock_redis, \
+         patch('src.core_handler.os.getenv') as mock_getenv:
+        
+        # Setup mocks
         mock_redis.xadd.return_value = "1-0"
+        # Mock the environment variable to return the expected stream name
+        mock_getenv.return_value = 'incoming_whatsapp_messages'
         
         # Create test message data as JSON string
         message_data = json.dumps({

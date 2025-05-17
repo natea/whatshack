@@ -46,6 +46,11 @@ def get_redis_client() -> Optional[redis.Redis]:
         return None
     
     try:
+        # Ensure TLS is used for Upstash Redis by converting redis:// to rediss://
+        if redis_url.startswith("redis://") and "upstash.io" in redis_url:
+            redis_url = redis_url.replace("redis://", "rediss://", 1)
+            print("Converting Redis URL to use TLS (rediss://)")
+        
         client = redis.from_url(redis_url)
         # Test connection
         client.ping()
@@ -81,18 +86,29 @@ def read_stream(client: redis.Redis, stream_name: str, count: int, block: int) -
         if stream_length == 0:
             print(f"Waiting for up to {block}ms for new messages...")
         
-        # Read from the stream
-        messages = client.xread({stream_name: '0'}, count=count, block=block)
-        
-        if not messages:
-            print("No messages received.")
+        # Read the most recent messages from the stream
+        if stream_length > 0:
+            # Use xrevrange to get the most recent messages
+            messages = client.xrevrange(stream_name, '+', '-', count=count)
+            if messages:
+                print(f"Read {len(messages)} messages from the stream.")
+                # Return in a format compatible with the rest of the code
+                return messages
+            else:
+                print("No messages received.")
+                return []
+        else:
+            # If stream is empty, try to wait for new messages
+            if block > 0:
+                print(f"Waiting for up to {block}ms for new messages...")
+                messages = client.xread({stream_name: '$'}, count=count, block=block)
+                if messages and len(messages) > 0:
+                    stream_messages = messages[0][1]
+                    print(f"Read {len(stream_messages)} messages from the stream.")
+                    return stream_messages
+            
+            print("No messages found in stream.")
             return []
-        
-        # Extract messages from the stream
-        stream_messages = messages[0][1]
-        print(f"Read {len(stream_messages)} messages from the stream.")
-        
-        return stream_messages
     except Exception as e:
         print(f"Error reading from stream: {str(e)}")
         return []
@@ -155,8 +171,8 @@ def main():
     if not client:
         sys.exit(1)
     
-    # Stream name
-    stream_name = 'incoming_whatsapp_messages'
+    # Get stream name from environment variable or use default
+    stream_name = os.getenv("REDIS_STREAM_NAME", 'incoming_whatsapp_messages')
     
     # Read from the stream
     messages = read_stream(client, stream_name, args.count, args.block)

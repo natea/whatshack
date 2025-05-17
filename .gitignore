@@ -61,5 +61,11 @@ venv.bak/
 # Logs
 logs/
 *.log
+
+# Pheromind
 .pheromone
+.docsregistry
+.memory
+
+# MacOSX
 .DS_Store

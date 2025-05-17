@@ -37,6 +37,11 @@ redis_client = None
 try:
     redis_url = os.getenv("REDIS_URL")
     if redis_url:
+        # Ensure TLS is used for Upstash Redis by converting redis:// to rediss://
+        if redis_url.startswith("redis://") and "upstash.io" in redis_url:
+            redis_url = redis_url.replace("redis://", "rediss://", 1)
+            logger.info("Converting Redis URL to use TLS (rediss://)")
+        
         redis_client = redis.from_url(redis_url)
         logger.info("Redis client initialized successfully")
     else:
@@ -320,8 +325,8 @@ def publish_to_redis_stream(message_data: str) -> bool:
         return False
     
     try:
-        # Publish to Redis stream
-        stream_name = 'incoming_whatsapp_messages'
+        # Get stream name from environment variable or use default
+        stream_name = os.getenv("REDIS_STREAM_NAME", 'incoming_whatsapp_messages')
         redis_client.xadd(stream_name, {'data': message_data})
         
         logger.info(f"Published message to Redis Stream '{stream_name}': {message_data}")
