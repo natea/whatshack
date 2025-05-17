@@ -1,60 +1,42 @@
-# Framework Scaffold Report - Township Connect
+# Framework Scaffold Report - Supabase Schema Verification
 
 **Date:** 2025-05-17
-**Project Plan:** [`docs/project_plan.md`](docs/project_plan.md)
-**Architecture (Gateway Selection):** [`docs/gateway_selection_rationale.md`](docs/gateway_selection_rationale.md)
-**n8n Instance URL:** https://n-8-n-ai-native-workflow-automation-natejaunetow.replit.app
 
-## 1. Overview
+## 1. Objective
 
-This report details the initial framework scaffolding activities undertaken for the Township Connect project. The goal of this phase was to set up foundational elements as per Micro-task 1.3 of the project plan, focusing on n8n and WhatsApp gateway integration.
+The objective of this scaffolding task was to ensure the correct application of the Supabase database schema defined in `db_scripts/db_schema_v1.sql` to the live Supabase instance, and to verify this by ensuring the tests in `tests/test_supabase_setup.py` pass when executed by `scripts/run_supabase_tests.sh`.
 
-## 2. Scaffolding Activities Performed
+## 2. Activities Performed
 
-The following activities were completed:
+*   **Initial Review:**
+    *   Consulted the `.pheromone` file, specifically signal `a4d1b3f7-c8e6-4b0d-9a1f-e92345f87621` and the documentation registry.
+    *   Reviewed the Master Project Plan ([`docs/project_plan.md`](docs/project_plan.md)), Micro-task 1.2 (criteria 1.2.3 and 1.2.4).
+    *   Reviewed relevant documentation:
+        *   [`db_scripts/db_schema_v1.sql`](db_scripts/db_schema_v1.sql)
+        *   [`docs/SUPABASE_INTEGRATION.md`](docs/SUPABASE_INTEGRATION.md)
+        *   [`scripts/apply_supabase_schema.py`](scripts/apply_supabase_schema.py)
+        *   [`tests/test_supabase_setup.py`](tests/test_supabase_setup.py)
+        *   [`scripts/run_supabase_tests.sh`](scripts/run_supabase_tests.sh)
 
-*   **Documentation Update (n8n Instance & Gateway Rationale):**
-    *   The n8n service URL was recorded in [`docs/n8n_instance_details.md`](docs/n8n_instance_details.md).
-    *   The [`docs/n8n_instance_details.md`](docs/n8n_instance_details.md) file and the existing [`docs/gateway_selection_rationale.md`](docs/gateway_selection_rationale.md) (confirming Twilio as the gateway) were registered in the project's [`.pheromone`](.pheromone) file.
-*   **n8n Workflow Creation (Twilio Gateway):**
-    *   An initial n8n workflow file, [`n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json`](n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json), was created. This workflow is designed to be triggered by incoming WhatsApp messages via Twilio.
-*   **n8n Webhook Verification Attempt:**
-    *   An initial attempt was made to verify the n8n webhook trigger by sending a test message.
-    *   A re-attempt was made on 2025-05-16 to verify the webhook trigger (Micro-task 1.3.5).
-    *   **Status:** BLOCKED. The n8n instance at the provided URL continues to experience the same internal error (`TypeError: Cannot read properties of undefined (reading 'getNode')`), which prevented the completion of the webhook verification. This issue was initially documented in [`n8n_setup.log`](n8n_setup.log).
-    *   A new diagnostic log file [`n8n_re_verification_debug.log`](n8n_re_verification_debug.log) was created, containing detailed diagnostic findings and a recommendation for a local-first debugging approach.
+*   **Schema Application Verification:**
+    *   A `devops-foundations-setup` agent was tasked to ensure the schema was applied.
+    *   The agent attempted to run [`scripts/apply_supabase_schema.py`](scripts/apply_supabase_schema.py). This script failed due to a client library compatibility issue (`SyncQueryRequestBuilder.execute() got an unexpected keyword argument 'options'`).
+    *   However, the agent confirmed through alternative means that the schema was already correctly applied:
+        *   Execution of [`scripts/run_supabase_tests.sh`](scripts/run_supabase_tests.sh) resulted in all tests in [`tests/test_supabase_setup.py`](tests/test_supabase_setup.py) passing (specifically `test_users_table_exists`, `test_service_bundles_table_exists`, `test_message_logs_table_exists`).
+        *   Review of [`docs/SUPABASE_INTEGRATION.md`](docs/SUPABASE_INTEGRATION.md) indicated the schema was applied during a prior SPARC Refinement cycle.
+        *   User-provided image confirmation (during the sub-task) showed the required tables present in the Supabase Studio.
 
-*   **Local n8n Webhook Verification Attempt:**
-    *   Following the recommendation in the debug log, a local verification attempt was made for the Twilio webhook (Micro-task 1.3.5).
-    *   **Objective:** Verify local n8n Twilio webhook trigger for workflow "Incoming_WhatsApp_Webhook_Twilio.json".
-    *   **Initial Status (2025-05-16):** FAILED.
-    *   **Brief Reason for Initial Failure:** Test message was sent to Twilio, ngrok received POST requests to `/webhook/twilio` but returned `404 Not Found` errors, indicating the local n8n instance did not handle the request at this path.
-    *   **Updated Status (2025-05-17):** SUCCESSFUL.
-    *   **Key Corrective Actions:**
-        *   Updated the workflow file [`n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json`](n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json) to explicitly set `parameters.path` to `twilio` and `parameters.httpMethod` to `POST`.
-        *   Re-imported the corrected workflow into the local n8n instance.
-        *   Verified the Webhook node's settings (Path: `twilio`, Method: `POST`) directly in the n8n UI, which appeared to be the final step needed for n8n to correctly register the production webhook path.
-    *   Detailed findings, diagnostics, root cause analysis, and verification results are documented in [`local_n8n_verification.log`](local_n8n_verification.log).
+## 3. Outcome
 
-## 3. Tools Used (by delegated agents)
+The Supabase database schema is correctly applied, and the tables `users`, `service_bundles`, and `message_logs` (as defined in [`db_scripts/db_schema_v1.sql`](db_scripts/db_schema_v1.sql)) exist in the Supabase database.
+The AI-verifiable end result for this task (successful execution of [`scripts/run_supabase_tests.sh`](scripts/run_supabase_tests.sh) with all relevant tests passing) has been met.
 
-*   File creation and modification tools (e.g., to write content to `.md`, `.json`, and `.log` files).
+## 4. Files Involved/Checked
 
-## 4. Initial Project Structure (Created/Modified Files)
-
-The following files were created or modified during this scaffolding phase:
-
-*   [`docs/n8n_instance_details.md`](docs/n8n_instance_details.md) (Created/Updated)
-*   [`.pheromone`](.pheromone) (Updated with new documentation registry entries)
-*   [`n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json`](n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json) (Created)
-*   [`n8n_setup.log`](n8n_setup.log) (Created to document n8n setup process and current blocker)
-*   [`n8n_re_verification_debug.log`](n8n_re_verification_debug.log) (Created to document re-verification attempt, diagnostic findings, and local debugging strategy)
-*   [`local_n8n_verification.log`](local_n8n_verification.log) (Created to document local n8n webhook verification attempt, findings, and next steps)
-
-## 5. Next Steps
-
-*   The primary blocker for completing Micro-task 1.3 remains the internal error in the Replit-hosted n8n instance. However, the successful local verification of the Twilio webhook integration provides a functional alternative path forward.
-*   The local n8n webhook verification for Micro-task 1.3.5 has been successfully completed. The webhook path `/webhook/twilio` is now correctly configured and functional in the local environment.
-*   The corrected workflow file [`n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json`](n8n_workflows/Incoming_WhatsApp_Webhook_Twilio.json) can be used as a reference for configuring the Replit instance once its internal error is resolved.
-*   With a functional local n8n webhook now established, the remaining parts of Micro-task 1.3 can proceed using the local environment.
-*   Subsequent micro-tasks, such as MT1.4 (Python Core Logic for inbound message handling via n8n), can now proceed using the local n8n instance for development and testing.
+*   [`.pheromone`](../.pheromone)
+*   [`docs/project_plan.md`](../docs/project_plan.md)
+*   [`db_scripts/db_schema_v1.sql`](../db_scripts/db_schema_v1.sql)
+*   [`docs/SUPABASE_INTEGRATION.md`](../docs/SUPABASE_INTEGRATION.md)
+*   [`scripts/apply_supabase_schema.py`](../scripts/apply_supabase_schema.py)
+*   [`tests/test_supabase_setup.py`](../tests/test_supabase_setup.py)
+*   [`scripts/run_supabase_tests.sh`](../scripts/run_supabase_tests.sh)
