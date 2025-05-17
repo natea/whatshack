@@ -9,6 +9,7 @@ import json
 import pytest
 import sys
 import os
+from pathlib import Path
 from unittest.mock import patch, MagicMock, ANY
 from unittest import mock
 
@@ -164,9 +165,23 @@ def test_handle_incoming_message_various_texts(message_text, expected_response):
 @pytest.mark.unit
 def test_handle_incoming_message_commands(command, expected_response, language):
     """Test that the handle_incoming_message function handles various commands correctly."""
-    # Mock the Supabase client and user
+    # Mock the Supabase client, user, and message template
     with patch('src.core_handler.supabase_client') as mock_client, \
-         patch('src.core_handler.get_user') as mock_get_user:
+         patch('src.core_handler.get_user') as mock_get_user, \
+         patch('src.core_handler.get_message_template') as mock_get_template, \
+         patch('src.core_handler.get_service_bundles') as mock_get_bundles:
+         
+        # Set up different return values for different template names
+        mock_get_template.side_effect = lambda template_name: {
+            "lang_confirmation_en.txt": "Language set to English",
+            "lang_confirmation_xh.txt": "Ulwimi lusetelwe kwiXhosa",
+            "lang_confirmation_af.txt": "Taal ingestel op Afrikaans",
+            "delete_prompt_en.txt": "Are you sure you want to delete all your data",
+            "delete_ack_en.txt": "Your data has been deleted"
+        }.get(template_name, "Default template")
+        
+        # Mock empty service bundles to avoid bundle prompt
+        mock_get_bundles.return_value = []
         
         # Setup mock user with POPIA consent given to avoid POPIA notice
         mock_user = {'preferred_language': language, 'popia_consent_given': True}
@@ -195,7 +210,13 @@ def test_generate_response():
     """Test that the generate_response function generates correct responses."""
     # Mock the message template function
     with patch('src.core_handler.get_message_template') as mock_get_template:
-        mock_get_template.return_value = "Welcome to Township Connect!"
+        # Set up different return values for different template names
+        mock_get_template.side_effect = lambda template_name: {
+            "welcome_en.txt": "Welcome to Township Connect!",
+            "lang_confirmation_xh.txt": "Ulwimi lusetelwe kwiXhosa",
+            "delete_prompt_en.txt": "Are you sure you want to delete all your data",
+            "delete_ack_en.txt": "Your data has been deleted"
+        }.get(template_name, "Default template")
         
         # Test echo response (should return echo of the text)
         response = generate_response("echo", {"text": "Hello"}, "whatsapp:+27123456789", "en")
@@ -265,11 +286,15 @@ def test_new_user_popia_notice():
     # Mock the Supabase client and user
     with patch('src.core_handler.supabase_client') as mock_client, \
          patch('src.core_handler.get_user') as mock_get_user, \
-         patch('src.core_handler.get_message_template') as mock_get_template:
-        
+         patch('src.core_handler.get_message_template') as mock_get_template, \
+         patch('src.core_handler.get_content_file') as mock_content_file:
+
         # Setup mocks
         mock_get_user.return_value = None  # User doesn't exist
         mock_get_template.return_value = "POPIA NOTICE: This is a test notice."
+        
+        # Mock the content file path to ensure it calls get_message_template with the right file
+        mock_content_file.return_value = Path("content/popia_notice_en.txt")
         
         # Create a test message
         test_message = {
