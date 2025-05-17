@@ -62,3 +62,4 @@ venv.bak/
 logs/
 *.log
 .pheromone
+.DS_Store

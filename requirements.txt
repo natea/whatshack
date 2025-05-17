@@ -8,6 +8,7 @@ python-dotenv==1.0.0
 requests==2.31.0
 fastapi==0.103.1
 uvicorn==0.23.2
+twilio==9.6.1
 
 # Development dependencies
 black==23.7.0

@@ -3,11 +3,9 @@
   "nodes": [
     {
       "parameters": {
+        "path": "twilio",
         "httpMethod": "POST",
-        "path": "incoming-whatsapp",
-        "options": {
-          "responseMode": "responseNode"
-        }
+        "options": {}
       },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
@@ -16,218 +14,15 @@
         250,
         300
       ],
-      "webhookId": "incoming-whatsapp-webhook"
+      "webhookId": "3b213e60-a906-4366-bc0f-44f486cbe2ee"
     },
     {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{$json.headers['x-twilio-signature']}}",
-              "operation": "exists"
-            }
-          ]
-        }
-      },
-      "name": "Validate Twilio Signature",
-      "type": "n8n-nodes-base.if",
+      "parameters": {},
+      "name": "NoOp",
+      "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
         450,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "keepOnlySet": true,
-        "values": {
-          "string": [
-            {
-              "name": "from",
-              "value": "={{$json.From}}"
-            },
-            {
-              "name": "to",
-              "value": "={{$json.To}}"
-            },
-            {
-              "name": "body",
-              "value": "={{$json.Body}}"
-            },
-            {
-              "name": "messageId",
-              "value": "={{$json.MessageSid}}"
-            },
-            {
-              "name": "numMedia",
-              "value": "={{$json.NumMedia}}"
-            },
-            {
-              "name": "timestamp",
-              "value": "={{$now}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Extract Message Data",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [
-        650,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.PYTHON_API_URL}}/process-whatsapp-message",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "message",
-              "value": "={{$json}}"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "name": "Call Python Core Logic",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [
-        850,
-        300
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "Python API Credentials"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "number": [
-            {
-              "value1": "={{$json.status}}",
-              "operation": "equal",
-              "value2": 200
-            }
-          ]
-        }
-      },
-      "name": "Check API Response",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        1050,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "accountSid": "={{ $credentials.twilioApi.accountSid }}",
-        "authToken": "={{ $credentials.twilioApi.authToken }}",
-        "from": "={{$node[\"Extract Message Data\"].json.to}}",
-        "to": "={{$node[\"Extract Message Data\"].json.from}}",
-        "message": "={{$json.response.message}}"
-      },
-      "name": "Send WhatsApp Reply",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [
-        1250,
-        250
-      ],
-      "credentials": {
-        "twilioApi": {
-          "name": "Twilio Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "content": "## Error Processing Message\nThe Python API returned an error.\n\n**Status Code**: {{$json.statusCode}}\n**Error**: {{$json.error || 'Unknown error'}}"
-      },
-      "name": "Log Error",
-      "type": "n8n-nodes-base.markdown",
-      "typeVersion": 1,
-      "position": [
-        1250,
-        450
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## Invalid Request\nThe request does not appear to be from Twilio. Missing Twilio signature."
-      },
-      "name": "Invalid Request",
-      "type": "n8n-nodes-base.markdown",
-      "typeVersion": 1,
-      "position": [
-        650,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "name": "Error Trigger",
-      "type": "n8n-nodes-base.errorTrigger",
-      "typeVersion": 1,
-      "position": [
-        250,
-        500
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{$env.ERROR_WEBHOOK_URL}}",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "workflow",
-              "value": "Incoming_WhatsApp_Webhook_Twilio"
-            },
-            {
-              "name": "error",
-              "value": "={{$json.error.message}}"
-            },
-            {
-              "name": "timestamp",
-              "value": "={{$now}}"
-            }
-          ]
-        }
-      },
-      "name": "Report Error",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [
-        450,
-        500
-      ]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {\"success\": true, \"message\": \"Message received and processed\"} }}",
-        "options": {}
-      },
-      "name": "Respond to Webhook",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        1450,
         300
       ]
     }
@@ -237,109 +32,7 @@
       "main": [
         [
           {
-            "node": "Validate Twilio Signature",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Twilio Signature": {
-      "main": [
-        [
-          {
-            "node": "Extract Message Data",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Invalid Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract Message Data": {
-      "main": [
-        [
-          {
-            "node": "Call Python Core Logic",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Call Python Core Logic": {
-      "main": [
-        [
-          {
-            "node": "Check API Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check API Response": {
-      "main": [
-        [
-          {
-            "node": "Send WhatsApp Reply",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Send WhatsApp Reply": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Error": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Error Trigger": {
-      "main": [
-        [
-          {
-            "node": "Report Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Report Error": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
+            "node": "NoOp",
             "type": "main",
             "index": 0
           }
@@ -348,21 +41,6 @@
     }
   },
   "active": true,
-  "settings": {
-    "executionOrder": "v1",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
-  },
-  "tags": [
-    "WhatsApp",
-    "Twilio",
-    "Incoming Messages"
-  ],
-  "staticData": null,
-  "pinData": {},
-  "versionId": "1",
-  "triggerCount": 1,
-  "createdAt": "2025-05-14T23:30:00.000Z",
-  "updatedAt": "2025-05-14T23:30:00.000Z"
+  "settings": {},
+  "id": "d318d6d3-761c-4564-a070-d66d3c8bc5a8"
 }
