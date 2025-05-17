@@ -17,14 +17,53 @@
       "webhookId": "3b213e60-a906-4366-bc0f-44f486cbe2ee"
     },
     {
-      "parameters": {},
-      "name": "NoOp",
-      "type": "n8n-nodes-base.noOp",
+      "parameters": {
+        "command": "python src/core_handler.py '{{JSON.stringify($json.body)}}'",
+        "executeTimeout": 60
+      },
+      "name": "Execute Command",
+      "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
         450,
         300
       ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse the JSON output from the Python script\nconst output = JSON.parse(items[0].json.stdout.trim());\n\nreturn [\n  {\n    json: {\n      reply_to: output.reply_to,\n      reply_text: output.reply_text\n    }\n  }\n];"
+      },
+      "name": "Parse Python Output",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "resource": "message",
+        "operation": "send",
+        "from": "{{$node[\"Webhook\"].json[\"body\"][\"To\"]}}",
+        "to": "{{$node[\"Parse Python Output\"].json[\"reply_to\"]}}",
+        "body": "{{$node[\"Parse Python Output\"].json[\"reply_text\"]}}",
+        "additionalFields": {}
+      },
+      "name": "Twilio",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "twilio-credentials",
+          "name": "Twilio account"
+        }
+      }
     }
   ],
   "connections": {
@@ -32,7 +71,29 @@
       "main": [
         [
           {
-            "node": "NoOp",
+            "node": "Execute Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command": {
+      "main": [
+        [
+          {
+            "node": "Parse Python Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Python Output": {
+      "main": [
+        [
+          {
+            "node": "Twilio",
             "type": "main",
             "index": 0
           }

@@ -48,12 +48,11 @@ def test_handle_n8n_message_format(n8n_message_format):
         # Parse the result
         result_data = json.loads(result)
         
-        # Verify the result format expected by n8n
-        assert 'status' in result_data, f"Expected 'status' in {result_data}"
-        assert result_data['status'] == 200
-        assert 'response' in result_data
-        assert 'message' in result_data['response']
-        assert "Welcome to Township Connect!" in result_data['response']['message']
+        # Verify the result format expected by n8n for MT 1.4.4
+        assert 'reply_to' in result_data, f"Expected 'reply_to' in {result_data}"
+        assert result_data['reply_to'] == 'whatsapp:+27123456789'
+        assert 'reply_text' in result_data, f"Expected 'reply_text' in {result_data}"
+        assert "Welcome to Township Connect!" in result_data['reply_text']
 
 @pytest.mark.unit
 def test_handle_n8n_message_echo_reply(n8n_message_format):
@@ -74,11 +73,10 @@ def test_handle_n8n_message_echo_reply(n8n_message_format):
         result_data = json.loads(result)
         
         # Verify the echo reply
-        assert 'status' in result_data, f"Expected 'status' in {result_data}"
-        assert result_data['status'] == 200
-        assert 'response' in result_data, f"Expected 'response' in {result_data}"
-        assert 'message' in result_data['response']
-        assert "Echo: Hello Bot" in result_data['response']['message']
+        assert 'reply_to' in result_data, f"Expected 'reply_to' in {result_data}"
+        assert result_data['reply_to'] == 'whatsapp:+27123456789'
+        assert 'reply_text' in result_data, f"Expected 'reply_text' in {result_data}"
+        assert "Echo: Hello Bot" in result_data['reply_text']
 
 @pytest.mark.unit
 def test_handle_n8n_message_logging(n8n_message_format):
@@ -109,8 +107,9 @@ def test_handle_n8n_message_logging(n8n_message_format):
         result_data = json.loads(result)
         
         # Verify the result format
-        assert 'status' in result_data, f"Expected 'status' in {result_data}"
-        assert result_data['status'] == 200
+        assert 'reply_to' in result_data, f"Expected 'reply_to' in {result_data}"
+        assert result_data['reply_to'] == 'whatsapp:+27123456789'
+        assert 'reply_text' in result_data, f"Expected 'reply_text' in {result_data}"
         
         # Verify that the outbound message was also logged
         mock_log_message.assert_any_call(
@@ -130,8 +129,8 @@ def test_handle_n8n_message_error():
     # Parse the result
     result_data = json.loads(result)
     
-    # Verify the result format expected by n8n
-    assert 'status' in result_data, f"Expected 'status' in {result_data}"
-    assert result_data['status'] == 400
-    assert 'error' in result_data, f"Expected 'error' in {result_data}"
-    assert "couldn't process your message" in result_data['error']
+    # Verify the result format expected by n8n for MT 1.4.4
+    assert 'reply_to' in result_data, f"Expected 'reply_to' in {result_data}"
+    assert result_data['reply_to'] == 'unknown'
+    assert 'reply_text' in result_data, f"Expected 'reply_text' in {result_data}"
+    assert "couldn't process your message" in result_data['reply_text']

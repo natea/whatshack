@@ -62,8 +62,6 @@ def execute_sql(sql, params=None) -> Tuple[bool, Any]:
         
         # Execute the SQL query
         result = client.from_('_').select('*').execute(
-            count='exact',
-            head=False,
             options={
                 'method': 'POST',
                 'url': f"{os.getenv('SUPABASE_URL')}/rest/v1/",

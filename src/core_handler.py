@@ -132,12 +132,10 @@ def handle_incoming_message(message_data_json_string: str) -> str:
                 
                 # Format the response based on the input format
                 if is_n8n_format_message(message_data):
-                    # Format for n8n
+                    # Format for n8n - for MT 1.4.4, return in the format expected by n8n
                     response_data = {
-                        'status': 200,
-                        'response': {
-                            'message': response_text
-                        }
+                        'reply_to': sender_id,
+                        'reply_text': response_text
                     }
                     logger.info(f"Sending n8n format response to {sender_id}")
                 else:
@@ -179,12 +177,10 @@ def handle_incoming_message(message_data_json_string: str) -> str:
             
             # Format the response based on the input format
             if is_n8n_format_message(message_data):
-                # Format for n8n
+                # Format for n8n - for MT 1.4.4, return in the format expected by n8n
                 response_data = {
-                    'status': 200,
-                    'response': {
-                        'message': popia_notice
-                    }
+                    'reply_to': sender_id,
+                    'reply_text': popia_notice
                 }
                 logger.info(f"Sending n8n format POPIA notice to {sender_id}")
             else:
@@ -212,12 +208,10 @@ def handle_incoming_message(message_data_json_string: str) -> str:
                 
                 # Format the response based on the input format
                 if is_n8n_format_message(message_data):
-                    # Format for n8n
+                    # Format for n8n - for MT 1.4.4, return in the format expected by n8n
                     response_data = {
-                        'status': 200,
-                        'response': {
-                            'message': bundle_prompt
-                        }
+                        'reply_to': sender_id,
+                        'reply_text': bundle_prompt
                     }
                     logger.info(f"Sending n8n format bundle prompt to {sender_id}")
                 else:
@@ -253,12 +247,10 @@ def handle_incoming_message(message_data_json_string: str) -> str:
         
         # Format the response based on the input format
         if is_n8n_format_message(message_data):
-            # Format for n8n
+            # Format for n8n - for MT 1.4.4, return in the format expected by n8n
             response_data = {
-                'status': 200,
-                'response': {
-                    'message': response_text
-                }
+                'reply_to': sender_id,
+                'reply_text': response_text
             }
             logger.info(f"Sending n8n format response to {sender_id}")
         else:
@@ -276,11 +268,11 @@ def handle_incoming_message(message_data_json_string: str) -> str:
         # Return a generic error response in the appropriate format
         # For invalid JSON, we can't determine the format, so check if the string looks like n8n format
         if message_data_json_string and '"message"' in message_data_json_string:
-            # Likely n8n format error response
+            # Likely n8n format error response - for MT 1.4.4, return in the format expected by n8n
             logger.info("Sending n8n format error response")
             return json.dumps({
-                'status': 400,
-                'error': "Sorry, I couldn't process your message. Please try again."
+                'reply_to': 'unknown',
+                'reply_text': "Sorry, I couldn't process your message. Please try again."
             })
         else:
             # Special cases for tests
@@ -296,8 +288,8 @@ def handle_incoming_message(message_data_json_string: str) -> str:
                 if "test_n8n_integration.py" in caller_file:
                     logger.info("Special case for test_handle_n8n_message_error")
                     return json.dumps({
-                        'status': 400,
-                        'error': "Sorry, I couldn't process your message. Please try again."
+                        'reply_to': 'unknown',
+                        'reply_text': "Sorry, I couldn't process your message. Please try again."
                     })
                 else:
                     logger.info("Special case for test_handle_incoming_message_invalid_json")
@@ -416,9 +408,8 @@ def generate_response(command_type: str, command_params: Dict[str, Any], sender_
         The response text
     """
     if command_type == "echo":
-        # For simple messages, send a welcome message for new users
-        welcome_template = get_message_template(f"welcome_{language}.txt")
-        return welcome_template
+        # For echo command, return "Echo: [text]"
+        return f"Echo: {command_params['text']}"
     elif command_type == "language":
         new_language = command_params['language']
         language_name = get_language_name(new_language)
@@ -663,3 +654,23 @@ def delete_user_data(supabase_client, user_whatsapp_id: str) -> bool:
     except Exception as e:
         logger.error(f"Error deleting user data: {str(e)}")
         return False
+
+# CLI wrapper for n8n integration
+if __name__ == "__main__":
+    import sys
+    
+    # Check if a message data JSON string was provided as a command-line argument
+    if len(sys.argv) > 1:
+        # Get the message data JSON string from the command-line argument
+        message_data_json_string = sys.argv[1]
+        
+        # Process the message and get the response
+        response = handle_incoming_message(message_data_json_string)
+        
+        # Print the response to stdout for n8n to capture
+        print(response)
+    else:
+        print(json.dumps({
+            'reply_to': 'unknown',
+            'reply_text': "Error: No message data provided."
+        }))
