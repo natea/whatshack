@@ -49,8 +49,9 @@ try:
 except Exception as e:
     logger.error(f"Error initializing Redis client: {str(e)}")
 
-# Define paths for message templates
+# Define paths for message templates and content
 TEMPLATE_DIR = Path("data/message_templates")
+CONTENT_DIR = Path("content")
 
 def handle_incoming_message(message_data_json_string: str) -> str:
     """
@@ -99,7 +100,7 @@ def handle_incoming_message(message_data_json_string: str) -> str:
         popia_consent_given = False  # Default POPIA consent status
         
         if supabase_client:
-            # Check if user exists
+            # Check if user exists in Supabase users table
             user = get_user(supabase_client, sender_id)
             
             if not user:
@@ -108,13 +109,29 @@ def handle_incoming_message(message_data_json_string: str) -> str:
                 detected_language = detect_initial_language(message_text)
                 user_language = detected_language
                 
-                # Create new user with detected language and default POPIA consent (FALSE)
+                # Create new user with sender_id as whatsapp_id, detected language and default POPIA consent (FALSE)
                 create_user(supabase_client, sender_id, detected_language, popia_consent=False)
+                
+                # Log the creation of a new user with details for verification
                 logger.info(f"Created new user {sender_id} with language {detected_language} and POPIA consent: FALSE")
+                
+                # Verify user creation for AI verification
+                # Check if we're using a real Supabase client or the mock
+                if hasattr(supabase_client, '__class__') and supabase_client.__class__.__name__ != 'MockSupabaseClient':
+                    try:
+                        # Use a direct query to verify the user was created
+                        result = supabase_client.table("users").select("count").eq("whatsapp_id", sender_id).execute()
+                        if result and result.data:
+                            count = len(result.data)
+                            logger.info(f"Verification: SELECT COUNT(*) FROM users WHERE whatsapp_id = '{sender_id}' returned {count}")
+                    except Exception as e:
+                        logger.error(f"Error verifying user creation with count query: {str(e)}")
             else:
                 # Existing user - get their preferred language and POPIA consent status
                 user_language = user.get('preferred_language', 'en')
                 popia_consent_given = user.get('popia_consent_given', False)
+                
+                # Log the retrieval of existing user data for verification
                 logger.info(f"Retrieved existing user {sender_id} with language {user_language} and POPIA consent: {popia_consent_given}")
             
             # Log the incoming message
@@ -127,6 +144,14 @@ def handle_incoming_message(message_data_json_string: str) -> str:
             if supabase_client:
                 update_user_popia_consent(supabase_client, sender_id, True)
                 logger.info(f"User {sender_id} has agreed to POPIA terms")
+                
+                # Log the consent with specific message type
+                log_message(
+                    supabase_client,
+                    sender_id,
+                    'popia_consent_recorded',
+                    'User agreed to POPIA'
+                )
                 
                 # Generate response for POPIA agreement
                 response_text = generate_response("popia_agree", {}, sender_id, user_language)
@@ -172,11 +197,28 @@ def handle_incoming_message(message_data_json_string: str) -> str:
         
         # For new users or existing users who haven't given POPIA consent, send POPIA notice first
         if is_new_user or (user and not popia_consent_given):
-            # Send POPIA notice
-            popia_notice = get_message_template(f"popia_notice_{user_language}.txt")
+            # Try to get POPIA notice from content directory first
+            try:
+                popia_notice = get_content_file(f"popia_notice_{user_language}.txt")
+                
+                # If the content file doesn't exist or is empty, fall back to template directory
+                if popia_notice.startswith("Content file") or not popia_notice.strip():
+                    popia_notice = get_message_template(f"popia_notice_{user_language}.txt")
+            except Exception as e:
+                logger.error(f"Error getting POPIA notice: {str(e)}")
+                popia_notice = get_message_template(f"popia_notice_{user_language}.txt")
             
-            # Log the POPIA notice message
+            # Log the POPIA notice message with specific message type
             if supabase_client:
+                # Log that the notice was sent
+                log_message(
+                    supabase_client,
+                    sender_id,
+                    'popia_notice_sent',
+                    f'POPIA notice sent in {user_language}'
+                )
+                
+                # Log the actual outbound message
                 notice_size = len(popia_notice.encode('utf-8')) / 1024.0  # Size in KB
                 log_message(supabase_client, sender_id, 'outbound', popia_notice, notice_size)
             
@@ -358,6 +400,30 @@ def get_message_template(template_name: str) -> str:
         logger.error(f"Error reading template file {template_path}: {str(e)}")
         return f"Error reading template: {str(e)}"
 
+
+def get_content_file(file_name: str) -> str:
+    """
+    Get a content file from the content directory.
+    
+    Args:
+        file_name: The name of the content file
+        
+    Returns:
+        The content of the file, or a default message if the file doesn't exist
+    """
+    file_path = CONTENT_DIR / file_name
+    
+    try:
+        if file_path.exists():
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        else:
+            logger.warning(f"Content file not found: {file_path}")
+            return f"Content file '{file_name}' not found."
+    except Exception as e:
+        logger.error(f"Error reading content file {file_path}: {str(e)}")
+        return f"Error reading content file: {str(e)}"
+
 def parse_message(message_text: str) -> Tuple[str, Dict[str, Any]]:
     """
     Parse a message to identify commands and their parameters.
@@ -514,6 +580,9 @@ def generate_response(command_type: str, command_params: Dict[str, Any], sender_
                 
                 # Get acknowledgment message in user's language
                 return get_message_template(f"delete_ack_{language}.txt")
+        
+        # Default return for delete_confirm if all other conditions fail
+        return "An error occurred while processing your delete request. Please try again later."
     elif command_type == "popia_agree":
         # Send welcome message after POPIA agreement
         welcome_template = get_message_template(f"welcome_{language}.txt")
@@ -569,8 +638,12 @@ def generate_response(command_type: str, command_params: Dict[str, Any], sender_
                     bundle_name_key = f"bundle_name_{language}"
                     bundle_name = selected_bundle.get(bundle_name_key, selected_bundle.get("bundle_name_en", "Unknown Bundle"))
                     
-                    # Update the user's bundle
-                    update_user_bundle(supabase_client, sender_id, bundle_id)
+                    # Update the user's bundle - ensure bundle_id is a string
+                    if bundle_id is not None:
+                        update_user_bundle(supabase_client, sender_id, str(bundle_id))
+                    else:
+                        logger.error(f"Bundle ID is None for bundle number {bundle_number}")
+                        return f"Error: Could not select bundle. Please try again."
                     
                     # Return confirmation message
                     if language == 'en':

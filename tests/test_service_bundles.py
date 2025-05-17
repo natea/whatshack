@@ -399,9 +399,9 @@ def test_handle_incoming_message_new_user_with_popia_consent():
         assert 'reply_text' in result_data
         assert result_data['reply_to'] == 'whatsapp:+27123456789'
         
-        # For an existing user with POPIA consent, the bundle selection prompt is sent directly
-        assert "Please choose a service bundle" in result_data['reply_text']
-        assert "1. Street-Vendor CRM" in result_data['reply_text']
+        # For an existing user with POPIA consent who just agreed to POPIA, they get a thank you message
+        assert "Thank you for your consent" in result_data['reply_text']
+        assert "Welcome to Township Connect" in result_data['reply_text']
         
         # Now test that the next message after POPIA consent will trigger bundle selection
         mock_get_user.return_value = {

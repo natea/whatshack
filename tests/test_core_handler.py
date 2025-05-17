@@ -168,8 +168,8 @@ def test_handle_incoming_message_commands(command, expected_response, language):
     with patch('src.core_handler.supabase_client') as mock_client, \
          patch('src.core_handler.get_user') as mock_get_user:
         
-        # Setup mock user
-        mock_user = {'preferred_language': language}
+        # Setup mock user with POPIA consent given to avoid POPIA notice
+        mock_user = {'preferred_language': language, 'popia_consent_given': True}
         mock_get_user.return_value = mock_user
         
         # Create a test message
