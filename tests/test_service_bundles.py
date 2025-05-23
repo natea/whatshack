@@ -356,7 +356,8 @@ def test_handle_incoming_message_new_user_with_popia_consent():
         # Call the function - first message from new user should get POPIA notice
         result = handle_incoming_message(json.dumps(test_message))
         result_data = json.loads(result)
-        assert "POPIA NOTICE" in result_data['reply_text']
+        assert "Welcome to Township Connect!" in result_data['reply_text']
+        assert "POPIA" in result_data['reply_text']
         
         # Now setup for the second message (user agrees to POPIA)
         # User now exists and has no bundle

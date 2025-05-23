@@ -18,11 +18,10 @@
     },
     {
       "parameters": {
-        "command": "python src/core_handler.py '{{JSON.stringify($json.body)}}'",
-        "executeTimeout": 60
+        "jsCode": "// Store the incoming data for logging/inspection\nconst incomingData = $input.item.json;\n\n// Log the data (in a real scenario, this could write to a file or database)\nconsole.log('Incoming WhatsApp message:', JSON.stringify(incomingData, null, 2));\n\n// Pass the data through unchanged\nreturn $input.item;"
       },
-      "name": "Execute Command",
-      "type": "n8n-nodes-base.executeCommand",
+      "name": "Log Incoming Data",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
         450,
@@ -31,10 +30,12 @@
     },
     {
       "parameters": {
-        "functionCode": "// Parse the JSON output from the Python script\nconst output = JSON.parse(items[0].json.stdout.trim());\n\nreturn [\n  {\n    json: {\n      reply_to: output.reply_to,\n      reply_text: output.reply_text\n    }\n  }\n];"
+        "command": "python src/core_handler.py \"{{ JSON.stringify($json) }}\"",
+        "executeOnce": true,
+        "options": {}
       },
-      "name": "Parse Python Output",
-      "type": "n8n-nodes-base.function",
+      "name": "Execute Python Script",
+      "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
         650,
@@ -43,19 +44,31 @@
     },
     {
       "parameters": {
-        "authentication": "genericCredentialType",
-        "resource": "message",
-        "operation": "send",
-        "from": "{{$node[\"Webhook\"].json[\"body\"][\"To\"]}}",
-        "to": "{{$node[\"Parse Python Output\"].json[\"reply_to\"]}}",
-        "body": "{{$node[\"Parse Python Output\"].json[\"reply_text\"]}}",
-        "additionalFields": {}
+        "jsCode": "// Parse the JSON response from the Python script\nconst responseData = JSON.parse($input.item.json.stdout);\n\n// Return the parsed response data\nreturn responseData;"
       },
-      "name": "Twilio",
-      "type": "n8n-nodes-base.twilio",
+      "name": "Parse Python Response",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 1,
       "position": [
         850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "resource": "message",
+        "operation": "send",
+        "from": "={{ $node[\"Webhook\"].json[\"body\"][\"To\"] }}",
+        "to": "={{ $node[\"Parse Python Response\"].json[\"reply_to\"] }}",
+        "body": "={{ $node[\"Parse Python Response\"].json[\"reply_text\"] }}",
+        "additionalFields": {}
+      },
+      "name": "Send Reply via Twilio",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1050,
         300
       ],
       "credentials": {
@@ -71,29 +84,40 @@
       "main": [
         [
           {
-            "node": "Execute Command",
+            "node": "Log Incoming Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Execute Command": {
+    "Log Incoming Data": {
       "main": [
         [
           {
-            "node": "Parse Python Output",
+            "node": "Call Python Core API",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse Python Output": {
+    "Execute Python Script": {
       "main": [
         [
           {
-            "node": "Twilio",
+            "node": "Parse Python Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Python Response": {
+      "main": [
+        [
+          {
+            "node": "Send Reply via Twilio",
             "type": "main",
             "index": 0
           }

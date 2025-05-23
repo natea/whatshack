@@ -25,7 +25,7 @@ Township Connect is a WhatsApp-based platform that aims to lower the barriers to
 
 1. Clone the repository:
    ```
-   git clone https://github.com/your-organization/township-connect.git
+   git clone https://github.com/natea/whatshack.git
    cd township-connect
    ```
 
@@ -64,9 +64,28 @@ pytest --cov=src tests/
 
 To run specific test categories:
 ```
-pytest -m smoke  # Run smoke tests only
-pytest -m unit   # Run unit tests only
+pytest -m smoke        # Run smoke tests only
+pytest -m unit         # Run unit tests only
+pytest -m integration  # Run integration tests only
 ```
+
+### Setting Up Test Environment
+
+For integration tests that require Supabase connectivity:
+
+1. Create a `.env.test` file in the `tests/` directory:
+   ```
+   cp tests/.env.test.example tests/.env.test
+   # Edit tests/.env.test with your test Supabase credentials
+   ```
+
+2. Alternatively, set the environment variables directly:
+   ```
+   export SUPABASE_URL=your-test-supabase-url
+   export SUPABASE_SERVICE_KEY=your-test-service-key
+   ```
+
+Integration tests will be skipped if these environment variables are not available.
 
 ### Test Structure
 

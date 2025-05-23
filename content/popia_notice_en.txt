@@ -1,17 +1,1 @@
-*POPIA NOTICE*
-
-Township Connect WhatsApp Assistant - Protection of Personal Information Act (POPIA) Notice
-
-Dear User,
-
-In accordance with the Protection of Personal Information Act (POPIA) of South Africa, we are required to inform you about how we collect, use, and protect your personal information.
-
-1. We collect and process your WhatsApp number, language preference, and message content to provide you with our services.
-2. Your information is stored securely in our database and is only accessible to authorized personnel.
-3. We will not share your information with third parties without your consent, except as required by law.
-4. You have the right to access, correct, or delete your personal information at any time.
-5. To delete your data, send "/delete" followed by "/delete confirm" when prompted.
-
-To continue using our service, please reply with "AGREE POPIA".
-
-Thank you for your trust in Township Connect.
+Welcome to Township Connect! To use our services, we need your consent under POPIA. We collect your WhatsApp number, language preference, and interaction data to provide and improve our services. We do not share your personal data with third parties for marketing. You can request data deletion anytime by sending '/delete'. To agree and continue, please reply 'AGREE POPIA'.

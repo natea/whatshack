@@ -31,10 +31,13 @@ def test_supabase_connection(supabase_client):
     if hasattr(supabase_client, '__class__') and supabase_client.__class__.__name__ == 'MockSupabaseClient':
         pytest.skip("Using mock Supabase client")
     
-    # Simple query to check connection
-    result = supabase_client.rpc('version').execute()
-    assert result.get('error') is None, f"Error connecting to Supabase: {result.get('error')}"
-    assert result.get('data') is not None, "No data returned from Supabase"
+    # Simple query to check connection - just try to get the list of tables
+    # This is more reliable than trying to call a specific function
+    try:
+        result = supabase_client.table('users').select('count').limit(1).execute()
+        assert result.data is not None, "No data returned from Supabase"
+    except Exception as e:
+        pytest.fail(f"Error connecting to Supabase: {str(e)}")
 
 @pytest.mark.database
 def test_users_table_exists(supabase_client):
@@ -220,28 +223,39 @@ def test_insert_and_retrieve_user(supabase_client):
     if hasattr(supabase_client, '__class__') and supabase_client.__class__.__name__ == 'MockSupabaseClient':
         pytest.skip("Using mock Supabase client")
     
-    # Test user data
-    test_user = {
-        "whatsapp_id": "test_whatsapp_id_" + os.urandom(4).hex(),
-        "preferred_language": "en",
-        "popia_consent_given": False
-    }
+    # For this test, we need to use the service client to bypass RLS
+    # Import here to avoid circular imports
+    from src.db.supabase_client import get_service_client
     
     try:
-        # Insert the test user
-        result = supabase_client.table("users").insert(test_user).execute()
-        assert result.get('error') is None, f"Error inserting test user: {result.get('error')}"
+        # Get the service client that bypasses RLS
+        service_client = get_service_client()
         
-        # Retrieve the test user
-        result = supabase_client.table("users").select("*").eq("whatsapp_id", test_user["whatsapp_id"]).execute()
-        assert result.get('error') is None, f"Error retrieving test user: {result.get('error')}"
-        assert len(result.get('data', [])) == 1, "Test user not found"
+        # Test user data
+        test_user = {
+            "whatsapp_id": "test_whatsapp_id_" + os.urandom(4).hex(),
+            "preferred_language": "en",
+            "popia_consent_given": False
+        }
+        
+        # Insert the test user using service client
+        result = service_client.table("users").insert(test_user).execute()
+        assert result.data is not None, "No data returned from Supabase insert"
+        
+        # Retrieve the test user using service client
+        result = service_client.table("users").select("*").eq("whatsapp_id", test_user["whatsapp_id"]).execute()
+        assert result.data is not None, "No data returned from Supabase select"
+        assert len(result.data) == 1, "Test user not found"
         
         # Check the retrieved user data
-        retrieved_user = result['data'][0]
+        retrieved_user = result.data[0]
         assert retrieved_user["whatsapp_id"] == test_user["whatsapp_id"]
         assert retrieved_user["preferred_language"] == test_user["preferred_language"]
         assert retrieved_user["popia_consent_given"] == test_user["popia_consent_given"]
+    
+    except ValueError as e:
+        # If service client is not available, skip the test
+        pytest.skip(f"Skipping test because service client is not available: {str(e)}")
         
     finally:
         # Clean up - delete the test user

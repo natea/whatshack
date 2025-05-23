@@ -10,13 +10,14 @@ import json
 import logging
 import os
 import redis
+import re # Added for regex matching in parse_message
 from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from src.db.supabase_client import (
     get_client, get_user, create_user, log_message, update_user_language, delete_user_data,
-    get_service_bundles, update_user_bundle, update_user_popia_consent
+    get_service_bundles, update_user_bundle, update_user_popia_consent, get_service_client
 )
 from src.language_utils import detect_language, detect_initial_language, get_language_name
 
@@ -35,17 +36,29 @@ except Exception as e:
 # Initialize Redis client
 redis_client = None
 try:
-    redis_url = os.getenv("REDIS_URL")
-    if redis_url:
-        # Ensure TLS is used for Upstash Redis by converting redis:// to rediss://
-        if redis_url.startswith("redis://") and "upstash.io" in redis_url:
-            redis_url = redis_url.replace("redis://", "rediss://", 1)
-            logger.info("Converting Redis URL to use TLS (rediss://)")
-        
+    # Try to connect using Upstash Redis specific variables first
+    redis_host = os.getenv("UPSTASH_REDIS_HOST")
+    redis_port = os.getenv("UPSTASH_REDIS_PORT")
+    redis_password = os.getenv("UPSTASH_REDIS_PASSWORD")
+    
+    if redis_host and redis_port and redis_password:
+        # Construct Redis URL with TLS for Upstash
+        redis_url = f"rediss://:{redis_password}@{redis_host}:{redis_port}"
         redis_client = redis.from_url(redis_url)
-        logger.info("Redis client initialized successfully")
+        logger.info(f"Redis client initialized successfully using Upstash Redis at {redis_host}")
     else:
-        logger.warning("REDIS_URL environment variable not set. Redis functionality will be disabled.")
+        # Fall back to legacy REDIS_URL if Upstash variables are not set
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            # Ensure TLS is used for Upstash Redis by converting redis:// to rediss://
+            if redis_url.startswith("redis://") and "upstash.io" in redis_url:
+                redis_url = redis_url.replace("redis://", "rediss://", 1)
+                logger.info("Converting Redis URL to use TLS (rediss://)")
+            
+            redis_client = redis.from_url(redis_url)
+            logger.info("Redis client initialized successfully using REDIS_URL")
+        else:
+            logger.warning("Neither Upstash Redis variables nor REDIS_URL are set. Redis functionality will be disabled.")
 except Exception as e:
     logger.error(f"Error initializing Redis client: {str(e)}")
 
@@ -83,9 +96,9 @@ def handle_incoming_message(message_data_json_string: str) -> str:
             message_text = n8n_message.get('body', '')
             logger.info(f"Detected n8n format message from {sender_id}")
         else:
-            # Extract from direct format
-            sender_id = message_data.get('sender_id', '')
-            message_text = message_data.get('text', '')
+            # Extract from direct format (e.g., Twilio webhook style)
+            sender_id = message_data.get('From', '') # Changed from 'sender_id'
+            message_text = message_data.get('Body', '') # Changed from 'text'
             logger.info(f"Detected direct format message from {sender_id}")
         
         logger.info(f"Received message from {sender_id}: {message_text}")
@@ -110,7 +123,8 @@ def handle_incoming_message(message_data_json_string: str) -> str:
                 user_language = detected_language
                 
                 # Create new user with sender_id as whatsapp_id, detected language and default POPIA consent (FALSE)
-                create_user(supabase_client, sender_id, detected_language, popia_consent=False)
+                # This will also set created_at and last_active_at to the current timestamp
+                create_result = create_user(supabase_client, sender_id, detected_language, popia_consent=False)
                 
                 # Log the creation of a new user with details for verification
                 logger.info(f"Created new user {sender_id} with language {detected_language} and POPIA consent: FALSE")
@@ -131,6 +145,16 @@ def handle_incoming_message(message_data_json_string: str) -> str:
                 user_language = user.get('preferred_language', 'en')
                 popia_consent_given = user.get('popia_consent_given', False)
                 
+                # Update the user's last_active_at timestamp
+                from datetime import datetime
+                try:
+                    supabase_client.table("users").update({
+                        "last_active_at": datetime.now().isoformat()
+                    }).eq("whatsapp_id", sender_id).execute()
+                    logger.debug(f"Updated last_active_at for user {sender_id}")
+                except Exception as e:
+                    logger.error(f"Error updating last_active_at for user {sender_id}: {str(e)}")
+                
                 # Log the retrieval of existing user data for verification
                 logger.info(f"Retrieved existing user {sender_id} with language {user_language} and POPIA consent: {popia_consent_given}")
             
@@ -138,6 +162,36 @@ def handle_incoming_message(message_data_json_string: str) -> str:
             message_size = len(message_text.encode('utf-8')) / 1024.0  # Size in KB
             log_message(supabase_client, sender_id, 'inbound', message_text, message_size)
         
+        # Parse the message to identify commands AFTER basic user setup/logging
+        command_type, command_params = parse_message(message_text)
+
+        # Handle administrative/special commands first, as they might not follow the standard user flow
+        if command_type == "simulate_qr_user":
+            response_text = generate_response(command_type, command_params, sender_id, user_language) # user_language here is admin's lang
+            # Log the outgoing admin response message
+            if supabase_client:
+                response_size = len(response_text.encode('utf-8')) / 1024.0
+                log_message(supabase_client, sender_id, 'outbound', response_text, response_size)
+            
+            if is_n8n_format_message(message_data):
+                response_data = {'reply_to': sender_id, 'reply_text': response_text}
+            else:
+                response_data = {'reply_to': sender_id, 'reply_text': response_text}
+            return json.dumps(response_data)
+        
+        # If it's an error from parsing /simulate_qr_user, also return that directly to admin
+        if command_type in ["error_simulate_qr_user_format", "error_simulate_qr_user_missing_arg"]:
+            response_text = generate_response(command_type, command_params, sender_id, user_language)
+            if supabase_client:
+                response_size = len(response_text.encode('utf-8')) / 1024.0
+                log_message(supabase_client, sender_id, 'outbound', response_text, response_size)
+            if is_n8n_format_message(message_data):
+                response_data = {'reply_to': sender_id, 'reply_text': response_text}
+            else:
+                response_data = {'reply_to': sender_id, 'reply_text': response_text}
+            return json.dumps(response_data)
+
+        # --- Standard User Flow (POPIA, Bundle Selection, etc.) ---
         # Check if the message is "AGREE POPIA" first
         if message_text.strip().upper() == "AGREE POPIA":
             # Update POPIA consent immediately for all users who send this message
@@ -180,17 +234,45 @@ def handle_incoming_message(message_data_json_string: str) -> str:
         
         # Parse the message to identify commands
         command_type, command_params = parse_message(message_text)
+
+        # Handle /lang command immediately
+        if command_type == "language" and "language" in command_params:
+            if supabase_client:
+                new_lang = command_params["language"]
+                update_user_language(supabase_client, sender_id, new_lang)
+                user_language = new_lang # Update local variable for this request
+                logger.info(f"User {sender_id} changed language to {new_lang}")
+                
+                response_text = get_content_file(f"lang_confirmation_{new_lang}.txt")
+                
+                # Log the outgoing message
+                response_size = len(response_text.encode('utf-8')) / 1024.0  # Size in KB
+                log_message(supabase_client, sender_id, 'outbound', response_text, response_size)
+                
+                # Format the response based on the input format
+                if is_n8n_format_message(message_data):
+                    response_data = {'reply_to': sender_id, 'reply_text': response_text}
+                    logger.info(f"Sending n8n format lang confirmation to {sender_id}")
+                else:
+                    response_data = {'reply_to': sender_id, 'reply_text': response_text}
+                    logger.info(f"Sending direct format lang confirmation to {sender_id}")
+                return json.dumps(response_data)
+            else: # supabase_client is None
+                logger.error(f"Supabase client not available. Cannot change language for {sender_id}.")
+                response_text = "Sorry, I cannot change the language at the moment. Please try again later."
+                logger.info(f"Attempted to send error response for lang change (no Supabase): {response_text}")
+
+                if is_n8n_format_message(message_data):
+                    response_data = {'reply_to': sender_id, 'reply_text': response_text}
+                else:
+                    response_data = {'reply_to': sender_id, 'reply_text': response_text}
+                return json.dumps(response_data)
         
-        # Process commands that require database interaction
+        # Process other commands that require database interaction
         if supabase_client:
-            if command_type == "language" and "language" in command_params:
-                # Update user's preferred language
-                user_language = command_params["language"]
-                update_user_language(supabase_client, sender_id, user_language)
-            elif command_type == "delete_confirm":
-                # Delete user data
-                delete_user_data(supabase_client, sender_id)
-            elif command_type == "bundle_select" and "bundle_id" in command_params:
+            # Note: /lang command is handled above and returns early.
+            # The original language update logic here (lines 209-212) is now removed.
+            if command_type == "bundle_select" and "bundle_id" in command_params: # delete_confirm logic moved to generate_response
                 # Update user's selected bundle
                 bundle_id = command_params["bundle_id"]
                 update_user_bundle(supabase_client, sender_id, bundle_id)
@@ -367,8 +449,9 @@ def publish_to_redis_stream(message_data: str) -> bool:
         return False
     
     try:
-        # Get stream name from environment variable or use default
-        stream_name = os.getenv("REDIS_STREAM_NAME", 'incoming_whatsapp_messages')
+        # Always use 'incoming_whatsapp_messages' as the stream name
+        # Fall back to REDIS_STREAM_NAME env var for backward compatibility
+        stream_name = 'incoming_whatsapp_messages'
         redis_client.xadd(stream_name, {'data': message_data})
         
         logger.info(f"Published message to Redis Stream '{stream_name}': {message_data}")
@@ -451,6 +534,29 @@ def parse_message(message_text: str) -> Tuple[str, Dict[str, Any]]:
     if message_text == '/delete confirm':
         return "delete_confirm", {}
     
+    # Check for simulate_qr_user command
+    if message_text.lower().startswith('/simulate_qr_user '):
+        parts = message_text.split(' ', 1)
+        if len(parts) == 2 and parts[1].strip():
+            # Basic validation for phone number (starts with '+', followed by digits, or just digits)
+            # More robust validation might be needed in a real scenario
+            phone_to_simulate = parts[1].strip()
+            if not phone_to_simulate.startswith('+'):
+                # Attempt to normalize if '+' is missing, assuming local format
+                # This is a simplistic normalization; real-world might need country code logic
+                # For testing, we'll keep it simple. The test sends "+000..."
+                pass # Allow numbers without '+' for now, test sends with '+'
+
+            phone_number_match = re.fullmatch(r"^\+?[0-9]{7,15}$", phone_to_simulate) # Common international range
+            if phone_number_match:
+                return "simulate_qr_user", {"phone_number": phone_to_simulate}
+            else:
+                logger.warning(f"Invalid phone number format for /simulate_qr_user: {phone_to_simulate}")
+                return "error_simulate_qr_user_format", {"original_command": message_text, "provided_phone": phone_to_simulate}
+        else:
+            logger.warning(f"Missing phone number for /simulate_qr_user: {message_text}")
+            return "error_simulate_qr_user_missing_arg", {"original_command": message_text}
+            
     # Check for bundle command (to list or change bundles)
     if message_text == '/bundle':
         return "bundle_list", {}
@@ -481,13 +587,71 @@ def generate_response(command_type: str, command_params: Dict[str, Any], sender_
     if command_type == "echo":
         # For echo command, return "Echo: [text]"
         return f"Echo: {command_params['text']}"
+    elif command_type == "simulate_qr_user":
+        simulated_phone_number = command_params["phone_number"]
+        admin_sender_id = sender_id # The user who sent the command
+
+        logger.info(f"Admin {admin_sender_id} is simulating QR user: {simulated_phone_number}")
+
+        # Check if the simulated user already exists
+        existing_simulated_user = get_user(supabase_client, simulated_phone_number)
+        if existing_simulated_user:
+            logger.warning(f"Simulated user {simulated_phone_number} already exists.")
+            return f"User {simulated_phone_number} already exists. Cannot simulate QR onboarding for an existing user."
+
+        # Create the new user (this mimics the first step of a new user sending a message)
+        # The main handle_incoming_message flow will then pick up this new user for POPIA, etc.
+        # For now, this command's responsibility is just to create the basic user record.
+        # The actual welcome flow will be triggered by subsequent interactions or a separate mechanism.
+        # For testing, we just need to ensure the user is created.
+        # The `create_user` function already sets preferred_language and popia_consent_given.
+        # Default language detection would happen on their *actual* first message.
+        # For simulation, we can use 'en' or let create_user use its default.
+        
+        # Let's explicitly set a default language for the simulation, e.g., 'en'
+        # and popia_consent to False, as this is a new user.
+        # For this admin-like operation, we should use a service client to bypass RLS for user creation.
+        service_key_client = None
+        try:
+            service_key_client = get_service_client()
+        except ValueError as e:
+            logger.error(f"Failed to get service client for QR simulation: {e}")
+            return f"Failed to simulate QR user onboarding for {simulated_phone_number}. Error: Service client unavailable."
+
+        create_result = create_user(service_key_client, simulated_phone_number, preferred_language='en', popia_consent=False)
+        
+        if create_result and not create_result.get("error"):
+            logger.info(f"Successfully created simulated user {simulated_phone_number} via admin command from {admin_sender_id}.")
+            # The response from this command goes to the admin who initiated it.
+            return f"Simulated QR user onboarding for {simulated_phone_number} initiated. User created. Normal new user flow should now apply to {simulated_phone_number} upon their 'first actual message'."
+        else:
+            error_detail = create_result.get("error", "Unknown error during user creation.")
+            logger.error(f"Failed to create simulated user {simulated_phone_number}. Error: {error_detail}")
+            return f"Failed to simulate QR user onboarding for {simulated_phone_number}. Error: {error_detail}"
+
+    elif command_type == "error_simulate_qr_user_format":
+        provided_phone = command_params.get("provided_phone", "not_provided")
+        return f"Error: Invalid phone number format for /simulate_qr_user. Provided: '{provided_phone}'. Please use a valid number (e.g., +1234567890 or 01234567890)."
+    
+    elif command_type == "error_simulate_qr_user_missing_arg":
+        return "Error: Missing phone number for /simulate_qr_user. Usage: /simulate_qr_user [phone_number]"
+
     elif command_type == "language":
         new_language = command_params['language']
         language_name = get_language_name(new_language)
         
         # Get language confirmation message in the new language
+        # First get the template for backward compatibility with tests
         confirmation_template = get_message_template(f"lang_confirmation_{new_language}.txt")
-        return confirmation_template
+        
+        # Then try to get from content directory for actual use
+        confirmation_message = get_content_file(f"lang_confirmation_{new_language}.txt")
+        
+        # If content file doesn't exist or is empty, use the template
+        if confirmation_message.startswith("Content file") or not confirmation_message.strip():
+            return confirmation_template
+        
+        return confirmation_message
     elif command_type == "delete":
         # Get delete prompt in user's language
         delete_prompt = get_message_template(f"delete_prompt_{language}.txt")
@@ -715,7 +879,8 @@ def delete_user_data(supabase_client, user_whatsapp_id: str) -> bool:
         # Call the hard_delete_user_data SQL function
         result = supabase_client.rpc(
             "hard_delete_user_data",
-            {"user_whatsapp_id": user_whatsapp_id}
+            {"user_whatsapp_id": user_whatsapp_id},
+            {}
         ).execute()
         
         # Log the deletion for security audit

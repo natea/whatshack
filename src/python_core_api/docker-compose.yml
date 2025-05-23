@@ -1,0 +1,87 @@
+services:
+  api: &main_app
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: township_connect_py_core:${TOWNSHIP_CONNECT_PY_CORE_VERSION:-latest}
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rmq:
+        condition: service_healthy
+    environment:
+      TOWNSHIP_CONNECT_PY_CORE_HOST: 0.0.0.0
+      TOWNSHIP_CONNECT_PY_CORE_DB_HOST: township_connect_py_core-db
+      TOWNSHIP_CONNECT_PY_CORE_DB_PORT: 5432
+      TOWNSHIP_CONNECT_PY_CORE_DB_USER: township_connect_py_core
+      TOWNSHIP_CONNECT_PY_CORE_DB_PASS: township_connect_py_core
+      TOWNSHIP_CONNECT_PY_CORE_DB_BASE: township_connect_py_core
+      TOWNSHIP_CONNECT_PY_CORE_RABBIT_HOST: township_connect_py_core-rmq
+      TOWNSHIP_CONNECT_PY_CORE_REDIS_HOST: township_connect_py_core-redis
+
+  db:
+    image: postgres:16.3-bullseye
+    hostname: township_connect_py_core-db
+    environment:
+      POSTGRES_PASSWORD: "township_connect_py_core"
+      POSTGRES_USER: "township_connect_py_core"
+      POSTGRES_DB: "township_connect_py_core"
+    volumes:
+      - township_connect_py_core-db-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: pg_isready -U township_connect_py_core
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  migrator:
+    image: township_connect_py_core:${TOWNSHIP_CONNECT_PY_CORE_VERSION:-latest}
+    restart: "no"
+    command: alembic upgrade head
+    environment:
+      TOWNSHIP_CONNECT_PY_CORE_DB_HOST: township_connect_py_core-db
+      TOWNSHIP_CONNECT_PY_CORE_DB_PORT: 5432
+      TOWNSHIP_CONNECT_PY_CORE_DB_USER: township_connect_py_core
+      TOWNSHIP_CONNECT_PY_CORE_DB_PASS: township_connect_py_core
+      TOWNSHIP_CONNECT_PY_CORE_DB_BASE: township_connect_py_core
+    depends_on:
+      db:
+        condition: service_healthy
+
+  redis:
+    image: bitnami/redis:6.2.5
+    hostname: "township_connect_py_core-redis"
+    restart: always
+    environment:
+      ALLOW_EMPTY_PASSWORD: "yes"
+    healthcheck:
+      test: redis-cli ping
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+  rmq:
+    image: rabbitmq:3.9.16-alpine
+    hostname: "township_connect_py_core-rmq"
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+      RABBITMQ_DEFAULT_VHOST: "/"
+    healthcheck:
+      test: rabbitmq-diagnostics check_running -q
+      interval: 3s
+      timeout: 3s
+      retries: 50
+
+
+
+volumes:
+  township_connect_py_core-db-data:
+    name: township_connect_py_core-db-data

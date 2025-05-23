@@ -36,7 +36,8 @@ def test_handle_incoming_message_basic(sample_message_json):
     assert 'reply_text' in result_data
     assert result_data['reply_to'] == 'whatsapp:+27123456789'
     # New users get POPIA notice first
-    assert 'POPIA NOTICE' in result_data['reply_text']
+    assert 'Welcome to Township Connect!' in result_data['reply_text']
+    assert 'POPIA' in result_data['reply_text']
     
     # Test with an existing user who has already given POPIA consent
     with patch('src.core_handler.supabase_client') as mock_client, \
@@ -81,7 +82,7 @@ def test_handle_incoming_message_empty():
     assert 'reply_text' in result_data
     assert result_data['reply_to'] == 'whatsapp:+27123456789'
     # New users get POPIA notice first, even for empty messages
-    assert 'POPIA NOTICE' in result_data['reply_text']
+    assert 'POPIA' in result_data['reply_text']
 
 @pytest.mark.unit
 def test_handle_incoming_message_invalid_json():
@@ -153,7 +154,8 @@ def test_handle_incoming_message_various_texts(message_text, expected_response):
     assert 'reply_text' in result_data
     assert result_data['reply_to'] == 'whatsapp:+27123456789'
     # New users get POPIA notice first
-    assert 'POPIA NOTICE' in result_data['reply_text']
+    assert 'Welcome to Township Connect!' in result_data['reply_text']
+    assert 'POPIA' in result_data['reply_text']
 
 @pytest.mark.parametrize("command,expected_response,language", [
     ("/lang en", "Language set to English", "xh"),

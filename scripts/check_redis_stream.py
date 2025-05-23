@@ -38,11 +38,36 @@ def get_redis_client() -> Optional[redis.Redis]:
     Returns:
         A Redis client or None if connection fails
     """
+    # Try to connect using Upstash Redis specific variables first
+    redis_host = os.getenv("UPSTASH_REDIS_HOST")
+    redis_port = os.getenv("UPSTASH_REDIS_PORT")
+    redis_password = os.getenv("UPSTASH_REDIS_PASSWORD")
+    
+    if redis_host and redis_port and redis_password:
+        try:
+            # Construct Redis URL with TLS for Upstash
+            redis_url = f"rediss://:{redis_password}@{redis_host}:{redis_port}"
+            client = redis.from_url(redis_url)
+            # Test connection
+            client.ping()
+            print(f"Connected to Upstash Redis at {redis_host}:{redis_port}")
+            return client
+        except Exception as e:
+            print(f"Error connecting to Upstash Redis: {str(e)}")
+            # Fall through to try legacy REDIS_URL
+    
+    # Fall back to legacy REDIS_URL if Upstash variables are not set or connection failed
     redis_url = os.getenv("REDIS_URL")
     if not redis_url:
-        print("Error: REDIS_URL environment variable not set.")
-        print("Please set REDIS_URL to the Redis connection string.")
-        print("Example: export REDIS_URL=redis://username:password@host:port")
+        print("Error: Neither Upstash Redis variables nor REDIS_URL environment variable are set.")
+        print("Please set either:")
+        print("1. UPSTASH_REDIS_HOST, UPSTASH_REDIS_PORT, and UPSTASH_REDIS_PASSWORD")
+        print("   Example: export UPSTASH_REDIS_HOST=your-redis.upstash.io")
+        print("            export UPSTASH_REDIS_PORT=12345")
+        print("            export UPSTASH_REDIS_PASSWORD=your-password")
+        print("OR")
+        print("2. REDIS_URL to the Redis connection string")
+        print("   Example: export REDIS_URL=redis://username:password@host:port")
         return None
     
     try:
@@ -171,8 +196,8 @@ def main():
     if not client:
         sys.exit(1)
     
-    # Get stream name from environment variable or use default
-    stream_name = os.getenv("REDIS_STREAM_NAME", 'incoming_whatsapp_messages')
+    # Always use 'incoming_whatsapp_messages' as the stream name
+    stream_name = 'incoming_whatsapp_messages'
     
     # Read from the stream
     messages = read_stream(client, stream_name, args.count, args.block)

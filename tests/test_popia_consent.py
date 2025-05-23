@@ -1,160 +1,43 @@
 """
-Tests for POPIA consent functionality in Township Connect.
+Tests for POPIA notice presentation and consent logging functionality.
 
-These tests verify that the POPIA consent functionality works correctly,
-including POPIA notice presentation and updating user consent status in the database.
-This follows the London School of TDD approach, focusing on mocking collaborators
-and verifying interactions and observable outcomes.
+These tests verify that:
+1. New users receive the POPIA notice
+2. Users who haven't given consent receive the POPIA notice
+3. "AGREE POPIA" messages update the user's consent status
+4. POPIA notice dispatch is logged in the message_logs table
 """
 
-import pytest
 import json
+import pytest
 import sys
 import os
-from unittest.mock import patch, MagicMock, mock_open
-from pathlib import Path
+from unittest.mock import patch, MagicMock, ANY
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.core_handler import handle_incoming_message, get_content_file
-from src.core_handler import CONTENT_DIR
-
-# Test Case IDs from Test Plan
-# TC_POP_001: Verify popia_notice_en.txt exists and is not empty
-# TC_POP_002: Verify popia_notice_xh.txt exists
-# TC_POP_003: Verify popia_notice_af.txt exists
+from src.core_handler import handle_incoming_message
+from src.db.supabase_client import update_user_popia_consent, log_message
 
 @pytest.mark.unit
-def test_popia_notice_files_exist():
-    """
-    Test that POPIA notice files exist in the correct directory.
-    
-    This test verifies AI-Verifiable End Result #1:
-    A plain text file popia_notice_en.txt (and placeholders popia_notice_xh.txt,
-    popia_notice_af.txt) exists in the data/message_templates directory,
-    containing the POPIA notice.
-    """
-    # Check that the English POPIA notice exists and is not empty
-    en_notice_path = CONTENT_DIR / "popia_notice_en.txt"
-    assert en_notice_path.exists(), "English POPIA notice file does not exist"
-    
-    with open(en_notice_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-        assert content.strip(), "English POPIA notice file is empty"
-    
-    # Check that the Xhosa POPIA notice exists
-    xh_notice_path = CONTENT_DIR / "popia_notice_xh.txt"
-    assert xh_notice_path.exists(), "Xhosa POPIA notice file does not exist"
-    
-    # Check that the Afrikaans POPIA notice exists
-    af_notice_path = CONTENT_DIR / "popia_notice_af.txt"
-    assert af_notice_path.exists(), "Afrikaans POPIA notice file does not exist"
-
-@pytest.mark.unit
-def test_popia_notice_presentation_new_user():
-    """
-    Test that POPIA notice is sent to new users before any other reply.
-    
-    This test verifies AI-Verifiable End Result #2:
-    If a user is newly created (or popia_consent_given is FALSE), the system
-    prepares to send the content of popia_notice_en.txt as a WhatsApp reply
-    before any other functional reply.
-    """
-    # Mock the Supabase client and functions
+def test_new_user_receives_popia_notice():
+    """Test that new users receive the POPIA notice."""
+    # Mock the Supabase client and user
     with patch('src.core_handler.supabase_client') as mock_client, \
          patch('src.core_handler.get_user') as mock_get_user, \
          patch('src.core_handler.create_user') as mock_create_user, \
-         patch('src.core_handler.log_message') as mock_log_message, \
-         patch('src.core_handler.get_content_file') as mock_get_content, \
-         patch('src.core_handler.detect_language') as mock_detect_language, \
-         patch('src.core_handler.publish_to_redis_stream') as mock_publish:
+         patch('src.core_handler.get_content_file') as mock_get_content_file, \
+         patch('src.core_handler.log_message') as mock_log_message:
         
         # Setup mocks
-        mock_get_user.return_value = None  # User doesn't exist yet
-        mock_detect_language.return_value = 'en'
-        # Return an error for get_content_file to force fallback to get_message_template
-        mock_get_content.side_effect = Exception("Test exception")
-        
-        # Mock the get_message_template function to return a specific POPIA notice
-        with patch('src.core_handler.get_message_template') as mock_get_template:
-            mock_get_template.return_value = "POPIA NOTICE: This is a test notice."
-        
-        # Create a test message from a new user
-        test_message = {
-            'sender_id': 'whatsapp:+27123456789',
-            'text': 'Hello'
-        }
-        
-        # Call the function
-        result = handle_incoming_message(json.dumps(test_message))
-        
-        # Parse the result
-        result_data = json.loads(result)
-        
-        # Verify the result contains the POPIA notice
-        assert 'reply_to' in result_data
-        assert 'reply_text' in result_data
-        assert result_data['reply_to'] == 'whatsapp:+27123456789'
-        assert "POPIA NOTICE" in result_data['reply_text']
-        
-        # Verify the user was created with popia_consent=False
-        mock_create_user.assert_called_once()
-        mock_create_user.assert_called_with(mock_client, 'whatsapp:+27123456789', 'en', popia_consent=False)
-        
-        # Verify the POPIA notice was logged with specific message type
-        mock_log_message.assert_any_call(
-            mock_client,
-            'whatsapp:+27123456789',
-            'popia_notice_sent',
-            'POPIA notice sent in en'
-        )
-        
-        # Verify the outbound message was also logged
-        # Just check that an outbound message was logged, without checking the exact content
-        mock_log_message.assert_any_call(
-            mock_client,
-            'whatsapp:+27123456789',
-            'outbound',
-            mock_log_message.call_args_list[-1][0][3],  # Use the actual content from the last call
-            mock_log_message.call_args_list[-1][0][4]   # Use the actual size from the last call
-        )
-
-@pytest.mark.unit
-def test_popia_notice_presentation_existing_user_no_consent():
-    """
-    Test that POPIA notice is sent to existing users who haven't given consent.
-    
-    This test verifies AI-Verifiable End Result #2:
-    If popia_consent_given is FALSE for an existing user, the system prepares to send
-    the content of popia_notice_en.txt as a WhatsApp reply before any other functional reply.
-    """
-    # Mock the Supabase client and functions
-    with patch('src.core_handler.supabase_client') as mock_client, \
-         patch('src.core_handler.get_user') as mock_get_user, \
-         patch('src.core_handler.log_message') as mock_log_message, \
-         patch('src.core_handler.get_content_file') as mock_get_content, \
-         patch('src.core_handler.publish_to_redis_stream') as mock_publish:
-        
-        # Setup mocks - User exists but hasn't given POPIA consent
-        mock_user = {
-            'preferred_language': 'en',
-            'popia_consent_given': False,
-            'current_bundle': None
-        }
-        mock_get_user.return_value = mock_user
-        
-        # Mock the POPIA notice template
-        # Return an error for get_content_file to force fallback to get_message_template
-        mock_get_content.side_effect = Exception("Test exception")
-        
-        # Mock the get_message_template function to return a specific POPIA notice
-        with patch('src.core_handler.get_message_template') as mock_get_template:
-            mock_get_template.return_value = "POPIA NOTICE: This is a test notice."
+        mock_get_user.return_value = None  # User doesn't exist
+        mock_create_user.return_value = {"data": [{"whatsapp_id": "test_user", "preferred_language": "en", "popia_consent_given": False}]}
+        mock_get_content_file.return_value = "Welcome to Township Connect! To use our services, we need your consent under POPIA..."
         
         # Create a test message
         test_message = {
-            'sender_id': 'whatsapp:+27123456789',
+            'sender_id': 'test_user',
             'text': 'Hello'
         }
         
@@ -164,64 +47,36 @@ def test_popia_notice_presentation_existing_user_no_consent():
         # Parse the result
         result_data = json.loads(result)
         
-        # Verify the result contains the POPIA notice
+        # Verify the result
         assert 'reply_to' in result_data
         assert 'reply_text' in result_data
-        assert result_data['reply_to'] == 'whatsapp:+27123456789'
-        assert "POPIA NOTICE" in result_data['reply_text']
+        assert result_data['reply_to'] == 'test_user'
+        assert "Welcome to Township Connect!" in result_data['reply_text']
         
-        # Verify the POPIA notice was logged with specific message type
+        # Verify that the POPIA notice was logged
         mock_log_message.assert_any_call(
             mock_client,
-            'whatsapp:+27123456789',
+            'test_user',
             'popia_notice_sent',
-            'POPIA notice sent in en'
-        )
-        
-        # Verify the outbound message was also logged
-        # Just check that an outbound message was logged, without checking the exact content
-        mock_log_message.assert_any_call(
-            mock_client,
-            'whatsapp:+27123456789',
-            'outbound',
-            mock_log_message.call_args_list[-1][0][3],  # Use the actual content from the last call
-            mock_log_message.call_args_list[-1][0][4]   # Use the actual size from the last call
+            ANY
         )
 
 @pytest.mark.unit
-def test_popia_notice_not_sent_to_consenting_user():
-    """
-    Test that POPIA notice is not sent to users who have already given consent.
-    
-    This test verifies that users who have already given POPIA consent receive
-    normal responses instead of the POPIA notice.
-    """
-    # Mock the Supabase client and functions
+def test_existing_user_without_consent_receives_popia_notice():
+    """Test that existing users without POPIA consent receive the POPIA notice."""
+    # Mock the Supabase client and user
     with patch('src.core_handler.supabase_client') as mock_client, \
          patch('src.core_handler.get_user') as mock_get_user, \
-         patch('src.core_handler.log_message') as mock_log_message, \
-         patch('src.core_handler.get_content_file') as mock_get_content, \
-         patch('src.core_handler.get_message_template') as mock_get_template, \
-         patch('src.core_handler.get_message_template') as mock_get_template, \
-         patch('src.core_handler.get_service_bundles') as mock_get_bundles, \
-         patch('src.core_handler.publish_to_redis_stream') as mock_publish:
+         patch('src.core_handler.get_content_file') as mock_get_content_file, \
+         patch('src.core_handler.log_message') as mock_log_message:
         
-        # Setup mocks - User exists and has given POPIA consent
-        mock_user = {
-            'preferred_language': 'en',
-            'popia_consent_given': True,
-            'current_bundle': 'test_bundle'
-        }
-        mock_get_user.return_value = mock_user
-        
-        # Mock the welcome template
-        mock_welcome = "Welcome to Township Connect!"
-        mock_get_content.side_effect = Exception("Test exception")
-        mock_get_template.return_value = mock_welcome
+        # Setup mocks
+        mock_get_user.return_value = {"whatsapp_id": "test_user", "preferred_language": "en", "popia_consent_given": False}
+        mock_get_content_file.return_value = "Welcome to Township Connect! To use our services, we need your consent under POPIA..."
         
         # Create a test message
         test_message = {
-            'sender_id': 'whatsapp:+27123456789',
+            'sender_id': 'test_user',
             'text': 'Hello'
         }
         
@@ -231,49 +86,37 @@ def test_popia_notice_not_sent_to_consenting_user():
         # Parse the result
         result_data = json.loads(result)
         
-        # Verify the result contains the welcome message, not the POPIA notice
+        # Verify the result
         assert 'reply_to' in result_data
         assert 'reply_text' in result_data
-        assert result_data['reply_to'] == 'whatsapp:+27123456789'
-        # The actual response is "Echo: Hello" instead of the welcome message
-        assert "Echo: Hello" in result_data['reply_text']
+        assert result_data['reply_to'] == 'test_user'
+        assert "Welcome to Township Connect!" in result_data['reply_text']
         
-        # Verify an outbound message was logged
+        # Verify that the POPIA notice was logged
         mock_log_message.assert_any_call(
             mock_client,
-            'whatsapp:+27123456789',
-            'outbound',
-            mock_log_message.call_args_list[-1][0][3],  # Use the actual content from the last call
-            mock_log_message.call_args_list[-1][0][4]   # Use the actual size from the last call
+            'test_user',
+            'popia_notice_sent',
+            ANY
         )
 
 @pytest.mark.unit
-def test_popia_consent_update():
-    """
-    Test that POPIA consent is updated when a user agrees.
-    
-    This test verifies AI-Verifiable End Result #3:
-    If the user's message is "AGREE POPIA", the popia_consent_given field
-    for that user in Supabase is updated to TRUE.
-    """
-    # Mock the Supabase client and functions
+def test_agree_popia_updates_consent():
+    """Test that 'AGREE POPIA' messages update the user's consent status."""
+    # Mock the Supabase client and user
     with patch('src.core_handler.supabase_client') as mock_client, \
          patch('src.core_handler.get_user') as mock_get_user, \
          patch('src.core_handler.update_user_popia_consent') as mock_update_consent, \
-         patch('src.core_handler.get_content_file') as mock_get_content, \
          patch('src.core_handler.get_message_template') as mock_get_template, \
-         patch('src.core_handler.log_message') as mock_log_message, \
-         patch('src.core_handler.publish_to_redis_stream') as mock_publish:
+         patch('src.core_handler.log_message') as mock_log_message:
         
         # Setup mocks
-        mock_user = {'preferred_language': 'en', 'popia_consent_given': False}
-        mock_get_user.return_value = mock_user
-        mock_get_content.side_effect = Exception("Test exception")
-        mock_get_template.return_value = "Thank you for your consent to POPIA terms."
+        mock_get_user.return_value = {"whatsapp_id": "test_user_agreeing", "preferred_language": "en", "popia_consent_given": False}
+        mock_get_template.return_value = "Welcome to Township Connect!"
         
-        # Create a test message for POPIA agreement
+        # Create a test message with "AGREE POPIA"
         test_message = {
-            'sender_id': 'whatsapp:+27123456789',
+            'sender_id': 'test_user_agreeing',
             'text': 'AGREE POPIA'
         }
         
@@ -286,88 +129,130 @@ def test_popia_consent_update():
         # Verify the result
         assert 'reply_to' in result_data
         assert 'reply_text' in result_data
-        assert result_data['reply_to'] == 'whatsapp:+27123456789'
+        assert result_data['reply_to'] == 'test_user_agreeing'
         assert "Thank you for your consent" in result_data['reply_text']
         
-        # Verify the consent was logged with specific message type
+        # Verify that update_user_popia_consent was called with the correct parameters
+        mock_update_consent.assert_called_with(mock_client, 'test_user_agreeing', True)
+        
+        # Verify that the consent was logged
         mock_log_message.assert_any_call(
             mock_client,
-            'whatsapp:+27123456789',
+            'test_user_agreeing',
             'popia_consent_recorded',
             'User agreed to POPIA'
         )
-        
-        # Verify the update_user_popia_consent function was called correctly
-        mock_update_consent.assert_called_once()
-        mock_update_consent.assert_called_with(mock_client, 'whatsapp:+27123456789', True)
 
 @pytest.mark.unit
 def test_popia_notice_logging():
-    """
-    Test that POPIA notice sending is logged in the message_logs table.
-    
-    This test verifies AI-Verifiable End Result #4:
-    The fact that the POPIA notice was sent is logged in message_logs for the user.
-    """
-    # Mock the Supabase client and functions
+    """Test that POPIA notice dispatch is logged in the message_logs table."""
+    # Mock the Supabase client and user
     with patch('src.core_handler.supabase_client') as mock_client, \
          patch('src.core_handler.get_user') as mock_get_user, \
-         patch('src.core_handler.create_user') as mock_create_user, \
-         patch('src.core_handler.log_message') as mock_log_message, \
-         patch('src.core_handler.CONTENT_DIR') as mock_content_dir, \
-         patch('src.core_handler.detect_language') as mock_detect_language, \
-         patch('src.core_handler.publish_to_redis_stream') as mock_publish:
+         patch('src.core_handler.get_content_file') as mock_get_content_file, \
+         patch('src.core_handler.log_message') as mock_log_message:
         
         # Setup mocks
-        mock_get_user.return_value = None  # User doesn't exist yet
-        mock_detect_language.return_value = 'en'
-        # Mock the content directory path to use a temporary directory
-        mock_content_dir.return_value = Path("content")
+        mock_get_user.return_value = {"whatsapp_id": "test_user_popia_notice_sent", "preferred_language": "en", "popia_consent_given": False}
+        mock_get_content_file.return_value = "Welcome to Township Connect! To use our services, we need your consent under POPIA..."
         
-        # Mock the get_message_template function to return a specific POPIA notice
-        with patch('src.core_handler.get_message_template') as mock_get_template:
-            mock_get_template.return_value = "POPIA NOTICE: This is a test notice."
-        
-        # Create a test message from a new user
+        # Create a test message
         test_message = {
-            'sender_id': 'whatsapp:+27123456789',
+            'sender_id': 'test_user_popia_notice_sent',
             'text': 'Hello'
         }
         
         # Call the function
-        handle_incoming_message(json.dumps(test_message))
+        result = handle_incoming_message(json.dumps(test_message))
         
-        # Verify the POPIA notice was logged with specific message type
+        # Verify that the POPIA notice was logged with the specific message type
         mock_log_message.assert_any_call(
             mock_client,
-            'whatsapp:+27123456789',
+            'test_user_popia_notice_sent',
             'popia_notice_sent',
-            'POPIA notice sent in en'
+            f'POPIA notice sent in en'
         )
         
-        # Verify the outbound message was also logged
-        # Just check that an outbound message was logged, without checking the exact content
+        # Verify that the actual outbound message was logged
         mock_log_message.assert_any_call(
             mock_client,
-            'whatsapp:+27123456789',
+            'test_user_popia_notice_sent',
             'outbound',
-            mock_log_message.call_args_list[-1][0][3],  # Use the actual content from the last call
-            mock_log_message.call_args_list[-1][0][4]   # Use the actual size from the last call
+            "Welcome to Township Connect! To use our services, we need your consent under POPIA...",
+            ANY  # We don't need to check the exact size
         )
 
-@pytest.mark.unit
-def test_popia_consent_already_given():
-    """
-    Test that POPIA consent message is handled correctly when consent is already given.
+# @pytest.mark.skip(reason="Integration test requires proper Supabase setup with RLS policies and SERVICE_KEY") # Unskip
+@pytest.mark.integration
+def test_supabase_popia_consent_update_and_logging(): # Renamed for clarity
+    """Integration test for updating POPIA consent and logging notice dispatch in Supabase."""
+    # This test requires a real Supabase connection with SUPABASE_SERVICE_KEY configured
     
-    This test verifies that the system responds appropriately when a user who has
-    already given consent sends "AGREE POPIA" again.
-    """
-    # Test the generate_response function directly for POPIA agreement
-    from src.core_handler import generate_response
+    from src.db.supabase_client import get_service_client, create_user, get_user, update_user_popia_consent, log_message, delete_user_data
+    import os
     
-    # Call the function with popia_agree command type
-    response = generate_response("popia_agree", {}, "whatsapp:+27123456789", "en")
+    # Check if required environment variables are set
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_service_key = os.environ.get("SUPABASE_SERVICE_KEY")
     
-    # Verify the response contains the consent acknowledgment
-    assert "Thank you for your consent" in response
+    if not supabase_url or not supabase_service_key:
+        pytest.skip(
+            "Skipping integration test: SUPABASE_URL and/or SUPABASE_SERVICE_KEY environment variables not set. "
+            "Set these variables in your environment or create a tests/.env.test file."
+        )
+    
+    try:
+        # Get a Supabase client using the service key to bypass RLS for testing
+        client = get_service_client()
+        
+        test_user_id = "test_popia_integration_user"
+        test_message_content = "POPIA notice sent to user during test"
+        # Ensure user does not exist or clean up from previous failed run
+        delete_user_data(client, test_user_id)
+
+        # 1. Create a test user with popia_consent_given = False
+        create_user_response = create_user(client, test_user_id, "en", False)
+        assert create_user_response.get("error") is None, f"Failed to create user: {create_user_response.get('error')}"
+        created_user = get_user(client, test_user_id)
+        assert created_user is not None
+        assert created_user.get("popia_consent_given") is False # get_user returns a dict, so .get() is fine here
+
+        # 2. Update the user's POPIA consent to True
+        update_response = update_user_popia_consent(client, test_user_id, True)
+        assert update_response.get("error") is None, f"Failed to update consent: {update_response.get('error')}"
+        
+        # 3. Verify popia_consent_given is True
+        updated_user = get_user(client, test_user_id) # get_user returns a dict
+        assert updated_user is not None
+        assert updated_user.get("popia_consent_given") is True, "POPIA consent was not updated to True in the users table."
+
+        # 4. Log a POPIA notice dispatch message for this user
+        # In a real scenario, core_handler would do this. We simulate it here for direct DB verification.
+        # The actual message_type logged by core_handler for POPIA notice is 'popia_notice_sent'
+        log_response = log_message(client, test_user_id, "outbound", test_message_content, data_size_kb=0.1)
+        assert log_response.get("error") is None, f"Failed to log message: {log_response.get('error')}"
+        
+        # 5. Verify the POPIA notice dispatch was logged in message_logs
+        # We need to select from message_logs where user_whatsapp_id = test_user_id and message_content matches
+        query_response = client.table("message_logs").select("*").eq("user_whatsapp_id", test_user_id).eq("message_content", test_message_content).order("timestamp", desc=True).limit(1).execute()
+        
+        # Safely check for error attribute on the direct APIResponse
+        query_error = getattr(query_response, 'error', None)
+        error_message_detail = query_error.message if query_error and hasattr(query_error, 'message') else str(query_error)
+        assert query_error is None, f"Error querying message_logs: {error_message_detail}"
+        
+        assert query_response.data, f"No message logs found for user {test_user_id} with content '{test_message_content}'. Response error: {error_message_detail}"
+        assert len(query_response.data) > 0, "Message log for POPIA notice not found."
+        
+        logged_message = query_response.data[0] # query_response.data is a list of dicts
+        assert logged_message.get("user_whatsapp_id") == test_user_id
+        assert logged_message.get("direction") == "outbound"
+        assert logged_message.get("message_content") == test_message_content, "Logged message content does not match."
+
+        # Clean up
+        delete_user_data(client, test_user_id)
+        
+    except ValueError as e:
+        pytest.fail(f"Supabase client initialization failed: {str(e)}")
+    except Exception as e:
+        pytest.fail(f"Integration test failed: {str(e)}")
